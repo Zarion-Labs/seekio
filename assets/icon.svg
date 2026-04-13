@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#e94560" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" fill="#050508"/>
+  <rect width="512" height="512" fill="url(#grid)"/>
+
+  <!-- $ node label -->
+  <text
+    x="256" y="200"
+    font-family="monospace" font-size="22" fill="#e94560"
+    letter-spacing="3" text-anchor="middle">$ node</text>
+
+  <!-- S lettermark -->
+  <text
+    x="256" y="340"
+    font-family="monospace" font-size="180" font-weight="900" fill="#ffffff"
+    text-anchor="middle">S</text>
+
+  <!-- Red accent bar -->
+  <rect x="216" y="358" width="80" height="4" rx="2" fill="#e94560"/>
+</svg>

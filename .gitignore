@@ -1,0 +1,24 @@
+# Dev utilities
+extract_html.js
+install-shortcut.ps1
+seekio.bat
+
+# Internal / dev-only docs
+CLAUDE.md
+GUIDE.md
+IMPROVEMENTS.md
+ONBOARDING.md
+
+# Superpowers / Claude Code internals
+.claude/
+.superpowers/
+
+# Implementation plans and design specs
+docs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/

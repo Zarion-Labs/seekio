@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>seekio</title>
+  <style>
+    /* ── Design Tokens ── */
+    :root {
+      --bg-base:       #07070f;
+      --bg-card:       #0a0a16;
+      --accent-red:    #e94560;
+      --accent-amber:  #f59e0b;
+      --accent-green:  #10b981;
+      --accent-indigo: #6366f1;
+      --text-muted:    rgba(255,255,255,0.25);
+      --border-subtle: rgba(255,255,255,0.06);
+      --border-active: rgba(233,69,96,0.22);
+      --font:          -apple-system, Inter, sans-serif;
+      --font-mono:     monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-base);
+      color: #fff;
+      font-family: var(--font);
+      min-height: 100dvh;
+    }
+
+    /* ── Header ── */
+    #header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      background: rgba(7,7,15,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      z-index: 100;
+    }
+
+    .wordmark {
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+    }
+
+    #btn-new-session {
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      background: rgba(233,69,96,0.1);
+      border: 1px solid rgba(233,69,96,0.25);
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    #btn-new-session:hover {
+      background: rgba(233,69,96,0.2);
+      border-color: rgba(233,69,96,0.45);
+    }
+
+    /* ── Grid ── */
+    #grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      max-width: 1100px;
+      margin: 72px auto 0;
+      padding: 24px 32px 48px;
+    }
+
+    /* ── New Session Slot ── */
+    #new-session-slot {
+      background: rgba(255,255,255,0.015);
+      border: 1px dashed rgba(255,255,255,0.08);
+      border-radius: 16px;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+
+    #new-session-slot:hover { border-color: rgba(233,69,96,0.3); }
+
+    .new-icon {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: rgba(233,69,96,0.08);
+      border: 1px solid rgba(233,69,96,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      color: rgba(233,69,96,0.7);
+    }
+
+    #new-session-slot span { font-size: 11px; color: rgba(255,255,255,0.2); }
+
+    /* ── Card ── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+    }
+
+    .card:hover { transform: translateY(-4px); }
+
+    .card[data-status="working"] {
+      border-color: var(--border-active);
+      box-shadow: 0 0 40px rgba(233,69,96,0.08), 0 8px 32px rgba(233,69,96,0.06);
+    }
+
+    .card[data-status="thinking"] {
+      border-color: rgba(245,158,11,0.2);
+      box-shadow: 0 0 30px rgba(245,158,11,0.05);
+    }
+
+    .card[data-status="idle"] { opacity: 0.65; }
+
+    /* Shimmer top line (working only) */
+    .shimmer {
+      display: none;
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-red), transparent);
+      opacity: 0.7; z-index: 2;
+    }
+    .card[data-status="working"] .shimmer { display: block; }
+
+    /* Card inner 2-col */
+    .card-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 180px;
+      position: relative;
+    }
+
+    /* ── Card Left ── */
+    .card-left {
+      padding: 22px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    /* Status badge */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+      width: fit-content;
+      border: 1px solid;
+    }
+
+    .card[data-status="working"]  .badge { background: rgba(233,69,96,0.08);  border-color: rgba(233,69,96,0.2);  color: rgba(233,69,96,0.85); }
+    .card[data-status="thinking"] .badge { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.2); color: rgba(245,158,11,0.85); }
+    .card[data-status="idle"]     .badge { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); color: rgba(255,255,255,0.3); }
+
+    .badge-dot {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .card[data-status="working"]  .badge-dot { background: var(--accent-red); box-shadow: 0 0 5px var(--accent-red); }
+    .card[data-status="thinking"] .badge-dot { background: var(--accent-amber); box-shadow: 0 0 5px var(--accent-amber); }
+    .card[data-status="idle"]     .badge-dot { background: #444; }
+
+    /* Avatar + title row */
+    .card-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .avatar-wrap { position: relative; flex-shrink: 0; }
+
+    .avatar-canvas {
+      display: block;
+      border-radius: 3px;
+      image-rendering: pixelated;
+    }
+
+    .avatar-dot {
+      position: absolute;
+      bottom: -2px; right: -2px;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      border: 2px solid var(--bg-card);
+    }
+    .card[data-status="working"]  .avatar-dot { background: var(--accent-red); box-shadow: 0 0 5px var(--accent-red); }
+    .card[data-status="thinking"] .avatar-dot { background: var(--accent-amber); box-shadow: 0 0 5px var(--accent-amber); }
+    .card[data-status="idle"]     .avatar-dot { background: #333; }
+
+    .project-name {
+      font-size: 17px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      line-height: 1;
+    }
+    .card[data-status="working"] .project-name {
+      background: linear-gradient(135deg, var(--accent-red), #ff8080);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .card[data-status="thinking"] .project-name,
+    .card[data-status="idle"]     .project-name { color: rgba(255,255,255,0.65); }
+
+    .project-path {
+      font-size: 9px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pill {
+      font-size: 9px;
+      color: rgba(255,255,255,0.35);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    /* ── Card Right ── */
+    .card-right {
+      border-left: 1px solid rgba(255,255,255,0.04);
+      padding: 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card[data-status="working"]  .card-right { background: rgba(233,69,96,0.015); }
+    .card[data-status="idle"]     .card-right { align-items: center; justify-content: center; }
+
+    .stats-label {
+      font-size: 8px;
+      color: rgba(255,255,255,0.2);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .stat {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .stat-val { font-size: 15px; font-weight: 800; letter-spacing: -0.5px; }
+    .stat-key { font-size: 7px; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 1px; margin-top: 1px; }
+
+    .stat-red    { color: var(--accent-red); }
+    .stat-green  { color: var(--accent-green); }
+    .stat-indigo { color: var(--accent-indigo); }
+    .stat-muted  { color: rgba(255,255,255,0.4); }
+
+    .idle-placeholder { font-size: 10px; color: rgba(255,255,255,0.15); }
+
+    /* Focus button */
+    .btn-focus {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #fff;
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, gap 0.2s;
+      width: fit-content;
+      margin-top: 2px;
+      background: none;
+      border: none;
+    }
+    .card[data-status="working"]  .btn-focus { background: rgba(233,69,96,0.1);  border: 1px solid rgba(233,69,96,0.25); }
+    .card[data-status="working"]:hover .btn-focus { background: rgba(233,69,96,0.2); border-color: rgba(233,69,96,0.45); gap: 10px; }
+    .card[data-status="thinking"] .btn-focus,
+    .card[data-status="idle"]     .btn-focus { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      #header { padding: 0 16px; }
+      #grid { grid-template-columns: 1fr; padding: 16px; }
+      .card-inner { grid-template-columns: 1fr; }
+      .card-right { border-left: none; border-top: 1px solid rgba(255,255,255,0.04); }
+    }
+
+    /* ── Drawer CSS — copied from old file in Task 4 ── */
+  .btn {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    padding: 8px 12px; border-radius: 4px; cursor: pointer;
+    transition: all 0.2s; border: 1px solid; white-space: nowrap;
+  }
+  .btn-send {
+    background: #1a1a2e; border-color: #2a2a3e; color: #cc7832;
+  }
+  .btn-send:hover { background: #2a2a3e; border-color: #cc7832; }
+  .btn-terminal {
+    background: #1a2e1a; border-color: #2a3e2a; color: #6a6;
+  }
+  .btn-terminal:hover { background: #2a3e2a; border-color: #27c93f; color: #27c93f; }
+  .btn-close {
+    background: transparent; border-color: #222; color: #444;
+  }
+  .btn-close:hover { border-color: #444; color: #888; }
+
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .modal-overlay.visible { opacity: 1; pointer-events: all; }
+  .modal {
+    background: #111; border: 1px solid #222; border-radius: 8px;
+    padding: 24px; width: 420px; max-width: 90vw;
+  }
+  .modal h2 {
+    font-size: 14px; font-weight: 400; color: #ccc;
+    margin-bottom: 16px; letter-spacing: 1px;
+  }
+  .modal-field { margin-bottom: 12px; }
+  .modal-field label {
+    display: block; font-size: 10px; color: #555;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+  }
+  .modal-input {
+    width: 100%; background: #0d1117; border: 1px solid #2a2a3e; color: #e0e0e0;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    padding: 10px 12px; border-radius: 4px; outline: none;
+  }
+  .modal-input:focus { border-color: #cc7832; }
+  .modal-input::placeholder { color: #333; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+  .dir-browser {
+    max-height: 180px; overflow-y: auto; margin-top: 6px;
+    background: #0a0e14; border: 1px solid #1a1a2e; border-radius: 4px;
+    scrollbar-width: thin; scrollbar-color: #333 transparent;
+  }
+  .dir-browser::-webkit-scrollbar { width: 4px; }
+  .dir-browser::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .dir-entry {
+    padding: 6px 10px; font-size: 11px; color: #888; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; transition: background 0.1s;
+  }
+  .dir-entry:hover { background: #1a1a2e; color: #cc7832; }
+  .dir-icon { color: #555; font-size: 10px; }
+  .dir-up { color: #666; font-style: italic; }
+  .modal-check {
+    display: flex; align-items: center; gap: 8px; margin-top: 4px;
+  }
+  .modal-check input[type="checkbox"] { accent-color: #cc7832; }
+  .modal-check label { font-size: 10px; color: #555; cursor: pointer; }
+
+  #tool-drawer {
+    position: fixed;
+    top: 56px;
+    right: 0;
+    bottom: 0;
+    width: 0;
+    overflow: hidden;
+    transition: width 0.25s ease;
+    z-index: 90;
+    background: #10101e;
+    display: flex;
+    flex-direction: column;
+  }
+  #tool-drawer.open {
+    width: 300px;
+    border-left: 1px solid rgba(233,69,96,0.15);
+  }
+  .drawer-handle {
+    display: none;
+    width: 30px; height: 3px;
+    background: #333;
+    border-radius: 2px;
+    margin: 8px auto 4px;
+    flex-shrink: 0;
+  }
+  .drawer-tabs {
+    display: flex;
+    border-bottom: 1px solid #2a2a3e;
+    flex-shrink: 0;
+  }
+  .drawer-tab {
+    flex: 1;
+    padding: 8px 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    border: none;
+    text-align: center;
+    letter-spacing: 1px;
+    transition: background 0.15s;
+  }
+  .drawer-tab.active { background: #e94560; color: #fff; }
+  .drawer-tab.inactive { background: #0f0f1a; color: #555; }
+  .drawer-tab.inactive:hover { background: #1a1a2e; color: #888; }
+  .drawer-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border-radius: 8px;
+    font-size: 8px;
+    padding: 1px 5px;
+    margin-left: 4px;
+  }
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+  }
+  .drawer-body::-webkit-scrollbar { width: 4px; }
+  .drawer-body::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+  .tool-group-divider {
+    font-size: 9px;
+    color: #555;
+    border-top: 1px dashed #2a2a3e;
+    padding-top: 5px;
+    margin: 8px 0 5px;
+    letter-spacing: 1px;
+  }
+  .tool-group-divider.current { color: #e94560; border-color: #e94560; }
+  .tool-entry {
+    background: #0a0a1a;
+    border-radius: 4px;
+    margin-bottom: 5px;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background 0.1s;
+  }
+  .tool-entry:hover { background: #111122; }
+  .tool-entry.done { border-left-color: #27c93f; }
+  .tool-entry.running { border-left-color: #ffbd2e; }
+  .tool-entry.error { border-left-color: #e94560; }
+  .tool-entry-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .tool-entry-name { font-weight: 500; color: #e0e0e0; font-size: 11px; }
+  .tool-entry-status-done { color: #27c93f; font-size: 9px; }
+  .tool-entry-status-run { color: #ffbd2e; font-size: 9px; }
+  .tool-entry-status-err { color: #e94560; font-size: 9px; }
+  .tool-entry-dur { color: #444; font-size: 9px; margin-left: auto; }
+  .tool-entry-arrow { color: #444; font-size: 10px; flex-shrink: 0; }
+  .tool-entry-arg {
+    font-size: 10px;
+    color: #666;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 230px;
+  }
+  .tool-entry-preview {
+    font-size: 9px;
+    margin-top: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 230px;
+  }
+  .tool-entry-preview.ok { color: #27c93f; }
+  .tool-entry-preview.err { color: #e94560; }
+  .tool-entry-expanded {
+    display: none;
+    background: #050510;
+    border-radius: 3px;
+    padding: 6px;
+    margin-top: 5px;
+    font-size: 9px;
+    color: #666;
+    max-height: 120px;
+    overflow-y: auto;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .tool-entry-expanded.visible { display: block; }
+  .tool-entry-exp-label { color: #444; margin-bottom: 2px; }
+
+  .mail-thread {
+    background: #0a0a1a;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    overflow: hidden;
+  }
+  .mail-thread-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 9px;
+    cursor: pointer;
+  }
+  .mail-thread-header:hover { background: #111122; }
+  .mail-thread-flash { animation: threadFlash 0.6s ease; }
+  @keyframes threadFlash { 0%,100% { background: #0a0a1a; } 50% { background: #1a1a2e; } }
+  .mail-thread-dots { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+  .mail-thread-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .mail-thread-role-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; opacity: 0.85; }
+  .mail-thread-info { flex: 1; min-width: 0; }
+  .mail-thread-name { font-size: 11px; font-weight: 500; color: #e0e0e0; display: flex; align-items: center; gap: 5px; }
+  .mail-thread-origin { font-size: 8px; color: #444; }
+  .mail-thread-rename-btn { background: none; border: none; color: #444; font-size: 9px; cursor: pointer; padding: 0 2px; line-height: 1; }
+  .mail-thread-rename-btn:hover { color: #888; }
+  .agent-rename-input { background: #0d0d1a; border: 1px solid #e94560; border-radius: 3px; color: #e0e0e0; font-size: 10px; padding: 1px 5px; width: 90px; outline: none; }
+  .agent-rename-save { background: none; border: none; color: #27c93f; font-size: 10px; cursor: pointer; padding: 0 3px; }
+  .agent-rename-cancel { background: none; border: none; color: #555; font-size: 10px; cursor: pointer; padding: 0 3px; }
+  .mail-thread-preview { font-size: 9px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; margin-top: 2px; }
+  .mail-thread-meta { font-size: 9px; color: #444; text-align: right; white-space: nowrap; }
+  .mail-thread-arrow { color: #444; font-size: 10px; }
+  .mail-thread-body { display: none; border-top: 1px solid #1a1a2e; max-height: 240px; overflow-y: auto; }
+  .mail-thread-body.open { display: block; }
+  .mail-conv-msg { padding: 6px 9px; border-bottom: 1px solid #0d0d1a; font-size: 10px; line-height: 1.5; }
+  .mail-conv-msg:last-child { border-bottom: none; }
+  .mail-conv-role { font-size: 9px; font-weight: 500; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
+  .mail-conv-role.lead { color: #e94560; }
+  .mail-conv-role.agent { color: #27c93f; }
+  .mail-conv-text { color: #888; }
+  .mail-conv-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .mail-tool-chip {
+    font-size: 9px;
+    background: #1a1a2e;
+    border-radius: 3px;
+    padding: 2px 6px;
+    color: #666;
+  }
+  .mail-tool-chip.done { border-left: 2px solid #27c93f; }
+  .mail-tool-chip.running { border-left: 2px solid #ffbd2e; }
+  .mail-tool-chip.error { border-left: 2px solid #e94560; }
+  .mail-readonly { font-size: 9px; color: #333; text-align: center; padding: 6px; border-top: 1px solid #1a1a2e; }
+
+  .busy-notice {
+    background: #1a1000;
+    border: 1px solid #ffbd2e44;
+    color: #ffbd2e;
+    font-size: 9px;
+    padding: 5px 8px;
+    border-radius: 3px;
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: opacity 0.5s ease;
+  }
+  .busy-notice.fading { opacity: 0; }
+
+  /* ── Mobile drawer (bottom sheet) ── */
+  @media (max-width: 600px) {
+    .drawer-handle { display: block; }
+
+    #tool-drawer {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      width: 100% !important;
+      height: 0;
+      max-height: 75dvh;
+      border-left: none !important;
+      border-top: 2px solid #e94560;
+      border-radius: 12px 12px 0 0;
+      transition: height 0.3s ease;
+      overflow: hidden;
+      top: auto;
+      z-index: 150;
+    }
+
+    #tool-drawer.open {
+      height: 75dvh;
+      width: 100% !important;
+    }
+  }
+
+  /* ── Tablet drawer ── */
+  @media (max-width: 1024px) and (min-width: 601px) {
+    #tool-drawer.open { width: 220px; }
+  }
+  </style>
+</head>
+<body>
+
+  <header id="header">
+    <span class="wordmark">seekio</span>
+    <button id="btn-new-session" type="button">+ New Session</button>
+  </header>
+
+  <main id="grid">
+    <div id="new-session-slot" role="button" tabindex="0" aria-label="Open new session dialog">
+      <div class="new-icon">+</div>
+      <span>New session</span>
+    </div>
+  </main>
+
+  <div id="tool-drawer">
+      <div class="drawer-handle" aria-hidden="true"></div>
+      <div class="drawer-tabs">
+        <button class="drawer-tab active" id="drawer-tab-tools" onclick="switchDrawerTab('tools')">⚙ TOOLS <span class="drawer-badge" id="drawer-badge-tools">0</span></button>
+        <button class="drawer-tab inactive" id="drawer-tab-mailbox" onclick="switchDrawerTab('mailbox')">✉ MAILBOX <span class="drawer-badge" id="drawer-badge-mailbox">0</span></button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </div>
+
+  <div class="modal-overlay" id="new-modal" onclick="if(event.target===this)closeNewSession()">
+    <div class="modal">
+      <h2>New Claude Session</h2>
+      <div class="modal-field">
+        <label>Project directory</label>
+        <input class="modal-input" id="new-dir" value="/">
+        <div class="dir-browser" id="dir-browser"></div>
+        <div style="margin-top:6px;display:flex;gap:6px">
+          <input class="modal-input" id="new-folder-name" placeholder="new folder name" style="font-size:11px;padding:6px 8px">
+          <button class="btn btn-send" onclick="createFolder()" style="padding:6px 10px;font-size:9px">create</button>
+        </div>
+      </div>
+      <div class="modal-field">
+        <label>First message to Claude (optional - leave blank for empty session)</label>
+        <input class="modal-input" id="new-prompt" placeholder="e.g. fix the failing tests">
+      </div>
+      <div class="modal-check">
+        <input type="checkbox" id="new-skip-perms">
+        <label for="new-skip-perms">--dangerously-skip-permissions</label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-close" onclick="closeNewSession()">cancel</button>
+        <button class="btn btn-terminal" onclick="launchNewSession()">launch</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ── State Variables ── */
+    let lastData = null;
+    let drawerPid = null;
+    let activeDrawerTab = 'tools';
+    let animFrame = 0;
+    let lastTickTs = 0;
+    const activeBusyNotices = new Map();
+    const expandedToolEntries = new Set();
+    const expandedThreads = new Set();
+    const prevSubAgentMsgCounts = {};
+    const agentNicknames = JSON.parse(localStorage.getItem('seekio-agent-nicks') || '{}');
+
+    const AGENT_ROLE_COLORS = {
+      bia:   '#9b59b6',
+      neo:   '#e94560',
+      xico:  '#3498db',
+      jumbo: '#f1c40f',
+      thor:  '#e67e22',
+      tim:   '#ecf0f1',
+    };
+
+    /* ── Helper Functions ── */
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function fmtMem(mem) {
+      if (!mem) return '—';
+      const mb = parseFloat(mem);
+      if (isNaN(mb)) return String(mem);
+      return mb >= 1024 ? (mb / 1024).toFixed(1) + 'gb' : Math.round(mb) + 'mb';
+    }
+
+    /* ── Render Sessions ── */
+    function renderSessions(sessions) {
+      const grid = document.getElementById('grid');
+      const slot = document.getElementById('new-session-slot');
+
+      // Remove all existing .card elements
+      grid.querySelectorAll('.card').forEach(c => c.remove());
+
+      if (!sessions || !sessions.length) return;
+
+      sessions.forEach(s => {
+        const status = s.status || 'idle';
+        const name = escapeHtml(s.projectName || s.cwd?.split(/[\\/]/).pop() || String(s.pid));
+        const cwd  = escapeHtml(s.cwd || '');
+        const pid  = String(s.pid);
+        const tty  = escapeHtml(s.tty || '');
+        const msgs = s.messages?.length ?? 0;
+        const cpu  = (s.cpu && s.cpu !== '?') ? s.cpu : '—';
+        const mem  = fmtMem(s.mem);
+        const elapsed = s.elapsed || '—';
+
+        const statsHtml = status === 'idle'
+          ? `<div class="idle-placeholder">no activity</div>`
+          : `
+            <div class="stats-label">live stats</div>
+            <div class="stats-grid">
+              <div class="stat"><div class="stat-val stat-red">${msgs}</div><div class="stat-key">messages</div></div>
+              <div class="stat"><div class="stat-val stat-green">${cpu}</div><div class="stat-key">cpu</div></div>
+              <div class="stat"><div class="stat-val stat-indigo">${mem}</div><div class="stat-key">memory</div></div>
+              <div class="stat"><div class="stat-val stat-muted">${elapsed}</div><div class="stat-key">uptime</div></div>
+            </div>
+            <button class="btn-focus" type="button">Focus →</button>
+          `;
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.dataset.status = status;
+        card.dataset.pid = pid;
+        card.dataset.tty = tty;
+        card.innerHTML = `
+          <div class="shimmer"></div>
+          <div class="card-inner">
+            <div class="card-left">
+              <div class="badge"><span class="badge-dot"></span><span>${status}</span></div>
+              <div class="card-title-row">
+                <div class="avatar-wrap">
+                  <canvas class="avatar-canvas" width="28" height="36"></canvas>
+                  <span class="avatar-dot"></span>
+                </div>
+                <div class="project-name">${name}</div>
+              </div>
+              <div class="project-path" title="${cwd}">${cwd}</div>
+              <div class="pills"><span class="pill">${elapsed}</span></div>
+            </div>
+            <div class="card-right">${statsHtml}</div>
+          </div>
+        `;
+
+        card.addEventListener('click', e => {
+          if (e.target.closest('.btn-focus')) return;
+          if (typeof openDrawer === 'function') openDrawer(pid);
+        });
+
+        const focusBtn = card.querySelector('.btn-focus');
+        if (focusBtn) {
+          focusBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            if (typeof handleFocus === 'function') handleFocus(tty, pid, e);
+          });
+        }
+
+        grid.insertBefore(card, slot);
+
+        // Draw pixel avatar
+        const canvas = card.querySelector('.avatar-canvas');
+        if (canvas) drawAvatar(canvas, status, pid);
+      });
+    }
+
+    /* ── Agent role color helper ── */
+    function agentRoleColor(name) {
+      if (!name) return null;
+      const base = name.toLowerCase().replace(/-\d+$/, '');
+      return AGENT_ROLE_COLORS[base] || null;
+    }
+
+    /* ── Busy notice ── */
+    function showBusyNotice(pid) {
+      if (activeBusyNotices.has(pid)) return;
+      activeBusyNotices.set(pid, { expiresAt: Date.now() + 4000 });
+      if (lastData) renderSessions(lastData.live);
+      setTimeout(() => {
+        activeBusyNotices.delete(pid);
+        if (lastData) renderSessions(lastData.live);
+      }, 4000);
+    }
+
+    /* ── Drawer functions ── */
+    function openDrawer(pid) {
+      drawerPid = pid;
+      document.getElementById('tool-drawer').classList.add('open');
+      renderDrawer();
+    }
+
+    function closeDrawer() {
+      drawerPid = null;
+      document.getElementById('tool-drawer').classList.remove('open');
+    }
+
+    function switchDrawerTab(tab) {
+      activeDrawerTab = tab;
+      document.getElementById('drawer-tab-tools').className = 'drawer-tab ' + (tab === 'tools' ? 'active' : 'inactive');
+      document.getElementById('drawer-tab-mailbox').className = 'drawer-tab ' + (tab === 'mailbox' ? 'active' : 'inactive');
+      renderDrawer();
+    }
+
+    function renderDrawer() {
+      if (!drawerPid || !lastData) return;
+      const session = lastData.live.find(s => s.pid === drawerPid);
+      if (!session) { closeDrawer(); return; }
+
+      document.getElementById('drawer-badge-tools').textContent = (session.toolCalls || []).length;
+      const activeAgents = (session.subAgents || []).filter(a => a.status !== 'idle').length;
+      document.getElementById('drawer-badge-mailbox').textContent = activeAgents;
+
+      const body = document.getElementById('drawer-body');
+
+      const bodyScroll = body.scrollTop;
+      const threadScrolls = {};
+      body.querySelectorAll('.mail-thread-body.open').forEach(el => {
+        const id = el.closest('.mail-thread')?.id;
+        if (id) threadScrolls[id] = el.scrollTop;
+      });
+      const toolScrolls = {};
+      body.querySelectorAll('.tool-entry-expanded.visible').forEach(el => {
+        const toolId = el.closest('.tool-entry')?.dataset?.toolId;
+        if (toolId) toolScrolls[toolId] = el.scrollTop;
+      });
+
+      if (activeDrawerTab === 'tools') {
+        body.innerHTML = renderToolsTab(session);
+      } else {
+        body.innerHTML = renderMailboxTab(session);
+      }
+
+      requestAnimationFrame(() => {
+        body.scrollTop = bodyScroll;
+        Object.entries(threadScrolls).forEach(([id, top]) => {
+          const thread = body.querySelector('#' + id + ' .mail-thread-body');
+          if (thread) thread.scrollTop = top;
+        });
+        Object.entries(toolScrolls).forEach(([toolId, top]) => {
+          const expanded = body.querySelector(`.tool-entry[data-tool-id="${toolId}"] .tool-entry-expanded`);
+          if (expanded) expanded.scrollTop = top;
+        });
+      });
+    }
+
+    function renderToolsTab(session) {
+      const toolCalls = session.toolCalls || [];
+      if (!toolCalls.length) return '<div style="color:#333;font-size:11px;padding:16px;text-align:center">No tool calls yet</div>';
+
+      const groups = {};
+      for (const tc of toolCalls) {
+        const key = tc.msgIndex;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(tc);
+      }
+
+      const maxIdx = Math.max(...Object.keys(groups).map(Number));
+
+      let html = '';
+      for (const [idxStr, calls] of Object.entries(groups).sort((a, b) => Number(a[0]) - Number(b[0]))) {
+        const idx = Number(idxStr);
+        const isCurrent = idx === maxIdx;
+        html += `<div class="tool-group-divider ${isCurrent ? 'current' : ''}">`;
+        html += isCurrent ? `MSG ${idx + 1} · CURRENT · ${calls.length} CALLS` : `MSG ${idx + 1} · ${calls.length} CALLS`;
+        html += '</div>';
+        for (const tc of calls) {
+          html += renderToolEntry(tc);
+        }
+      }
+      return html;
+    }
+
+    function renderToolEntry(tc) {
+      const isExpanded = expandedToolEntries.has(tc.id);
+      const statusEl = tc.status === 'done'
+        ? `<span class="tool-entry-status-done">✓</span>`
+        : tc.status === 'error'
+        ? `<span class="tool-entry-status-err">✗ error</span>`
+        : `<span class="tool-entry-status-run">⟳</span>`;
+      const dur = tc.durationMs !== null ? `${(tc.durationMs / 1000).toFixed(1)}s` : '';
+      const arrow = tc.result !== null || tc.input
+        ? `<span class="tool-entry-arrow">${isExpanded ? '▾' : '▸'}</span>`
+        : '';
+
+      let previewHtml = '';
+      if (tc.result !== null) {
+        const firstLine = tc.result.split('\n')[0].slice(0, 60);
+        previewHtml = `<div class="tool-entry-preview ${tc.isError ? 'err' : 'ok'}">${escapeHtml(firstLine)}</div>`;
+      }
+
+      let expandedHtml = '';
+      if (isExpanded) {
+        const inputStr = JSON.stringify(tc.input, null, 2);
+        expandedHtml = `
+          <div class="tool-entry-expanded visible">
+            <div class="tool-entry-exp-label">INPUT</div>
+            <div>${escapeHtml(inputStr)}</div>
+            ${tc.result !== null ? `<div class="tool-entry-exp-label" style="margin-top:6px">OUTPUT</div><div style="color:${tc.isError ? '#e94560' : '#27c93f'}">${escapeHtml(tc.result)}</div>` : ''}
+          </div>`;
+      }
+
+      const statusClass = tc.status === 'done' ? 'done' : tc.status === 'error' ? 'error' : 'running';
+      return `
+        <div class="tool-entry ${statusClass}" data-tool-id="${escapeHtml(tc.id)}" onclick="toggleToolExpand('${escapeHtml(tc.id)}',event)">
+          <div class="tool-entry-row">
+            <span class="tool-entry-name">${escapeHtml(tc.name)}</span>
+            ${statusEl}
+            <span class="tool-entry-dur">${escapeHtml(dur)}</span>
+            ${arrow}
+          </div>
+          ${tc.keyArg ? `<div class="tool-entry-arg">${escapeHtml(tc.keyArg)}</div>` : ''}
+          ${previewHtml}
+          ${expandedHtml}
+        </div>`;
+    }
+
+    function toggleToolExpand(toolId, event) {
+      event.stopPropagation();
+      if (expandedToolEntries.has(toolId)) expandedToolEntries.delete(toolId);
+      else expandedToolEntries.add(toolId);
+      renderDrawer();
+    }
+
+    function renderMailboxTab(session) {
+      const agents = session.subAgents || [];
+      if (!agents.length) {
+        return '<div style="color:#333;font-size:11px;padding:16px;text-align:center">No sub-agents for this session</div>';
+      }
+
+      const isActive = a => a.status === 'working' || a.status === 'thinking';
+      const sorted = [...agents].sort((a, b) => isActive(a) === isActive(b) ? 0 : isActive(a) ? -1 : 1);
+
+      return sorted.map(agent => {
+        const isOpen = expandedThreads.has(agent.agentId);
+        const messages = agent.messages || [];
+        const dotColor = agent.status === 'working' ? '#27c93f' : agent.status === 'thinking' ? '#ffbd2e' : '#555';
+        const lastMsg = messages.length ? messages[messages.length - 1] : null;
+        const prevCount = prevSubAgentMsgCounts[agent.agentId] || 0;
+        const isNew = messages.length > prevCount;
+        prevSubAgentMsgCounts[agent.agentId] = messages.length;
+        const userNick = agentNicknames[agent.agentId];
+        const displayName = userNick || agent.name;
+        const originLabel = userNick ? '✎ renamed' : agent.nameOrigin === 'renamed' ? '✓ dispatched' : 'generated';
+
+        let bodyHtml = '';
+        if (isOpen) {
+          let convHtml = '';
+          for (const msg of messages) {
+            const roleLabel = msg.role === 'user' ? 'Lead →' : `← ${escapeHtml(displayName)}`;
+            const roleClass = msg.role === 'user' ? 'lead' : 'agent';
+            convHtml += `
+              <div class="mail-conv-msg">
+                <div class="mail-conv-role ${roleClass}">${roleLabel}</div>
+                <div class="mail-conv-text">${escapeHtml(msg.text)}</div>
+              </div>`;
+          }
+          if (agent.toolCalls && agent.toolCalls.length) {
+            const chips = agent.toolCalls.map(tc =>
+              `<span class="mail-tool-chip ${tc.status}">${escapeHtml(tc.name)} ${tc.status === 'done' ? '✓' : tc.status === 'error' ? '✗' : '⟳'}</span>`
+            ).join('');
+            convHtml += `<div class="mail-conv-msg"><div class="mail-conv-tools">${chips}</div></div>`;
+          }
+          bodyHtml = `
+            <div class="mail-thread-body open">${convHtml}</div>
+            <div class="mail-readonly">👁 read-only</div>`;
+        }
+
+        return `
+          <div class="mail-thread ${isNew ? 'mail-thread-flash' : ''}" id="thread-${escapeHtml(agent.agentId)}">
+            <div class="mail-thread-header" onclick="toggleThread('${escapeHtml(agent.agentId)}',event)">
+              <span class="mail-thread-dots">
+                <span class="mail-thread-dot" style="background:${dotColor}"></span>
+                ${agentRoleColor(displayName) ? `<span class="mail-thread-role-dot" style="background:${agentRoleColor(displayName)}"></span>` : ''}
+              </span>
+              <div class="mail-thread-info">
+                <div class="mail-thread-name" id="agent-name-${escapeHtml(agent.agentId)}" data-generated="${escapeHtml(agent.name)}">
+                  ${escapeHtml(displayName)}
+                  <span class="mail-thread-origin">${originLabel}</span>
+                  <button class="mail-thread-rename-btn" title="Rename" onclick="startRenameAgent('${escapeHtml(agent.agentId)}',event)">✎</button>
+                </div>
+                ${lastMsg ? `<div class="mail-thread-preview">${escapeHtml(lastMsg.text.slice(0, 50))}</div>` : ''}
+              </div>
+              <div class="mail-thread-meta">${messages.length} msgs</div>
+              <span class="mail-thread-arrow">${isOpen ? '▾' : '▸'}</span>
+            </div>
+            ${bodyHtml}
+          </div>`;
+      }).join('');
+    }
+
+    function toggleThread(agentId, event) {
+      event.stopPropagation();
+      if (expandedThreads.has(agentId)) expandedThreads.delete(agentId);
+      else expandedThreads.add(agentId);
+      renderDrawer();
+    }
+
+    function startRenameAgent(agentId, event) {
+      event.stopPropagation();
+      const nameEl = document.getElementById('agent-name-' + agentId);
+      if (!nameEl) return;
+      const current = agentNicknames[agentId] || nameEl.dataset.generated || '';
+      nameEl.innerHTML = `
+        <input id="agent-rename-input-${escapeHtml(agentId)}"
+          class="agent-rename-input"
+          value="${escapeHtml(current)}"
+          placeholder="Agent nickname..."
+          onclick="event.stopPropagation()"
+          onkeydown="handleRenameKey('${escapeHtml(agentId)}',event)"
+        />
+        <button class="agent-rename-save" onclick="commitRename('${escapeHtml(agentId)}',event)">✓</button>
+        <button class="agent-rename-cancel" onclick="cancelRename('${escapeHtml(agentId)}',event)">✕</button>`;
+      const inp = document.getElementById('agent-rename-input-' + agentId);
+      if (inp) { inp.focus(); inp.select(); }
+    }
+
+    function handleRenameKey(agentId, event) {
+      if (event.key === 'Enter') commitRename(agentId, event);
+      else if (event.key === 'Escape') cancelRename(agentId, event);
+    }
+
+    function commitRename(agentId, event) {
+      event.stopPropagation();
+      const inp = document.getElementById('agent-rename-input-' + agentId);
+      const val = inp ? inp.value.trim() : '';
+      if (val) {
+        agentNicknames[agentId] = val;
+      } else {
+        delete agentNicknames[agentId];
+      }
+      localStorage.setItem('seekio-agent-nicks', JSON.stringify(agentNicknames));
+      renderDrawer();
+    }
+
+    function cancelRename(agentId, event) {
+      event.stopPropagation();
+      renderDrawer();
+    }
+
+    async function openTerminal(tty, pid, event) {
+      event.stopPropagation();
+      try { await fetch('/api/focus?tty=' + encodeURIComponent(tty) + '&pid=' + encodeURIComponent(pid)); } catch {}
+    }
+
+    function showNewSession(event) {
+      event.stopPropagation();
+      document.getElementById('new-modal').classList.add('visible');
+      const dirInput = document.getElementById('new-dir');
+      dirInput.focus();
+      dirInput.setSelectionRange(dirInput.value.length, dirInput.value.length);
+      browseDir(dirInput.value);
+    }
+
+    let cachedDir = '';
+    let cachedEntries = [];
+
+    async function browseDir(inputVal) {
+      const lastSlash = inputVal.lastIndexOf('/');
+      const parentDir = inputVal.substring(0, lastSlash + 1);
+      const filter = inputVal.substring(lastSlash + 1).toLowerCase();
+
+      if (parentDir !== cachedDir) {
+        try {
+          const r = await fetch('/api/ls?dir=' + encodeURIComponent(parentDir));
+          const d = await r.json();
+          cachedDir = parentDir;
+          cachedEntries = d.ok ? d.entries : [];
+        } catch { cachedEntries = []; }
+      }
+
+      const filtered = filter
+        ? cachedEntries.filter(e => e.toLowerCase().startsWith(filter))
+        : cachedEntries;
+
+      const browser = document.getElementById('dir-browser');
+      if (!filtered.length) {
+        browser.innerHTML = '<div class="dir-entry dir-up" onclick="goUpDir()"><span class="dir-icon">..</span> up</div>'
+          + (filter ? '<div class="dir-entry" style="color:#333;cursor:default">no matches</div>' : '<div class="dir-entry" style="color:#333;cursor:default">no subdirectories</div>');
+        return;
+      }
+      browser.innerHTML = '<div class="dir-entry dir-up" onclick="goUpDir()"><span class="dir-icon">..</span> up</div>'
+        + filtered.map(e => `<div class="dir-entry" onclick="selectDir('${escapeHtml(parentDir + e)}')"><span class="dir-icon">+</span> ${escapeHtml(e)}</div>`).join('');
+    }
+
+    function selectDir(dir) {
+      const input = document.getElementById('new-dir');
+      input.value = dir + '/';
+      input.focus();
+      browseDir(dir);
+    }
+
+    function goUpDir() {
+      const input = document.getElementById('new-dir');
+      let dir = input.value.replace(/\/+$/, '');
+      const parent = dir.substring(0, dir.lastIndexOf('/'));
+      if (parent) {
+        input.value = parent + '/';
+        input.focus();
+        browseDir(parent);
+      }
+    }
+
+    async function createFolder() {
+      const dirInput = document.getElementById('new-dir');
+      const nameInput = document.getElementById('new-folder-name');
+      const name = nameInput.value.trim();
+      if (!name) { showToast('Enter a folder name'); return; }
+      let parent = dirInput.value.replace(/\/+$/, '');
+      const newPath = parent + '/' + name;
+      try {
+        const r = await fetch('/api/mkdir', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ path: newPath }) });
+        const d = await r.json();
+        if (d.ok) {
+          nameInput.value = '';
+          selectDir(newPath);
+          showToast('Created ' + name);
+        } else {
+          showToast('Failed: ' + (d.error || 'unknown'));
+        }
+      } catch { showToast('Failed to create folder'); }
+    }
+
+    let browseTimeout;
+    document.addEventListener('DOMContentLoaded', () => {
+      const dirInput = document.getElementById('new-dir');
+      if (dirInput) {
+        dirInput.addEventListener('input', () => {
+          clearTimeout(browseTimeout);
+          browseTimeout = setTimeout(() => browseDir(dirInput.value), 300);
+        });
+      }
+    });
+
+    function closeNewSession() {
+      document.getElementById('new-modal').classList.remove('visible');
+      document.getElementById('new-dir').value = '';
+      document.getElementById('new-prompt').value = '';
+      document.getElementById('new-skip-perms').checked = false;
+    }
+
+    async function launchNewSession() {
+      const dir = document.getElementById('new-dir').value.trim();
+      if (!dir) { showToast('Enter a directory'); return; }
+      const prompt = document.getElementById('new-prompt').value.trim();
+      const skip = document.getElementById('new-skip-perms').checked;
+      try {
+        const r = await fetch('/api/new', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dir, prompt, skipPerms: skip }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          closeNewSession();
+          showToast('Launched new Claude session');
+        } else {
+          showToast('Launch failed: ' + (d.error || 'unknown'));
+        }
+      } catch { showToast('Launch failed'); }
+    }
+
+    function showToast(msg) {
+      let t = document.getElementById('toast');
+      if (!t) {
+        t = document.createElement('div');
+        t.id = 'toast';
+        t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#222;color:#e0e0e0;font-size:11px;padding:8px 16px;border-radius:6px;border:1px solid #333;z-index:300;opacity:0;transition:opacity 0.3s;pointer-events:none;';
+        document.body.appendChild(t);
+      }
+      t.textContent = msg;
+      t.style.opacity = '1';
+      setTimeout(() => { t.style.opacity = '0'; }, 3000);
+    }
+
+    /* ── Part D: handleFocus ── */
+    function handleFocus(tty, pid, event) {
+      if (event) event.stopPropagation();
+      openTerminal(tty, pid, event);
+    }
+
+    /* ── SSE Connection ── */
+    function connectSSE() {
+      const src = new EventSource('/api/stream');
+      src.onmessage = e => {
+        try {
+          lastData = JSON.parse(e.data);
+          renderSessions(lastData.live);
+        } catch(err) {
+          console.error('SSE parse error', err);
+        }
+      };
+      src.onerror = () => {
+        setTimeout(connectSSE, 3000);
+        src.close();
+      };
+    }
+
+    /* ── Pixel drawing constants (copied verbatim from original) ── */
+    const PX = 4; // pixel scale
+    const HAIR_COLORS = ['#6b4226','#2a1a0a','#d4a44a','#c24a2a','#8a2a4a','#f5f5dc','#1a1a2e','#ff6b35'];
+    const SKIN_COLORS = ['#f0c090','#d4a070','#8d5524','#c68642','#f1c27d','#e0ac69','#503335','#ffdbac'];
+    const SHIRT_COLORS = ['#5b8dd9','#d95b5b','#5bd98a','#d9b95b','#9b5bd9','#d95bba','#5bd9d9','#ff6b35'];
+    const PANTS_COLORS = ['#3b4a6b','#4a3b6b','#3b6b4a','#6b4a3b','#2d2d3d','#3d2d2d','#2d3d2d','#444'];
+    const HAIR_STYLES = ['short','spiky','long','ponytail','mohawk','bun','curly','buzzcut'];
+    const DESK_ITEMS = ['coffee','plant','cat','book','headphones','duck'];
+    const CHAIR_COLORS = ['#444','#6b2222','#22446b','#226b44','#6b4422','#4a2266'];
+
+    function hashPid(pid) {
+      const s = String(pid);
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+      return Math.abs(h);
+    }
+
+    /* ── Pixel drawing functions (copied verbatim from original) ── */
+    function getCharTraits(pid) {
+      const h = hashPid(pid);
+      return {
+        hair: HAIR_COLORS[h % HAIR_COLORS.length],
+        skin: SKIN_COLORS[(h >> 3) % SKIN_COLORS.length],
+        shirt: SHIRT_COLORS[(h >> 6) % SHIRT_COLORS.length],
+        pants: PANTS_COLORS[(h >> 9) % PANTS_COLORS.length],
+        hairStyle: HAIR_STYLES[(h >> 12) % HAIR_STYLES.length],
+        deskItem: DESK_ITEMS[(h >> 15) % DESK_ITEMS.length],
+        chairColor: CHAIR_COLORS[(h >> 18) % CHAIR_COLORS.length],
+      };
+    }
+
+    function drawPixelCharacter(canvas, status, frame, pid) {
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, w, h);
+
+      const p = Math.max(1, Math.floor((canvas.width / 200) * PX));
+      const cx = Math.floor(w / 2);
+      const t = getCharTraits(pid || '0');
+
+      const screenGlow = status === 'working' ? '#27c93f' : status === 'thinking' ? '#ffbd2e' : '#334';
+      const desk = '#8b6914';
+      const deskDark = '#6b4f10';
+
+      // === DESK ===
+      ctx.fillStyle = desk;
+      ctx.fillRect(cx - 22*p, 26*p, 44*p, 3*p);
+      ctx.fillStyle = deskDark;
+      ctx.fillRect(cx - 22*p, 29*p, 44*p, p);
+      ctx.fillRect(cx - 20*p, 30*p, 2*p, 8*p);
+      ctx.fillRect(cx + 18*p, 30*p, 2*p, 8*p);
+
+      // === MONITOR ===
+      ctx.fillStyle = '#222';
+      ctx.fillRect(cx - 8*p, 16*p, 16*p, 10*p);
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(cx - 7*p, 17*p, 14*p, 8*p);
+      ctx.fillStyle = screenGlow;
+      ctx.fillRect(cx - 6*p, 18*p, 12*p, 6*p);
+
+      // Screen lines
+      ctx.fillStyle = status === 'working' ? '#4ae84a' : status === 'thinking' ? '#ffe066' : '#445';
+      const lo = frame % 3;
+      for (let i = 0; i < 3; i++) {
+        ctx.fillRect(cx - 5*p, (19 + i*2)*p, ((i + lo) % 3 === 0 ? 8 : (i + lo) % 3 === 1 ? 6 : 10)*p, p);
+      }
+
+      // Monitor stand
+      ctx.fillStyle = '#333';
+      ctx.fillRect(cx - 2*p, 26*p, 4*p, p);
+      ctx.fillRect(cx - p, 25*p, 2*p, p);
+
+      // === CHAIR ===
+      ctx.fillStyle = t.chairColor;
+      ctx.fillRect(cx + 14*p, 22*p, 6*p, 2*p);
+      ctx.fillRect(cx + 18*p, 16*p, 2*p, 6*p);
+      ctx.fillRect(cx + 15*p, 24*p, p, 6*p);
+      ctx.fillRect(cx + 19*p, 24*p, p, 6*p);
+      ctx.fillStyle = '#333';
+      ctx.fillRect(cx + 14*p, 30*p, 2*p, p);
+      ctx.fillRect(cx + 19*p, 30*p, 2*p, p);
+
+      // === CHARACTER ===
+      const charX = cx + 12*p;
+      const charY = 8*p;
+      const bobY = status === 'working' ? (frame % 2 === 0 ? 0 : -p) : 0;
+
+      // Head
+      ctx.fillStyle = t.skin;
+      ctx.fillRect(charX, charY + bobY, 4*p, 4*p);
+
+      // Hair by style
+      ctx.fillStyle = t.hair;
+      if (t.hairStyle === 'short') {
+        ctx.fillRect(charX - p, charY + bobY - p, 6*p, 2*p);
+        ctx.fillRect(charX - p, charY + bobY, p, 2*p);
+      } else if (t.hairStyle === 'spiky') {
+        ctx.fillRect(charX - p, charY + bobY - p, 6*p, p);
+        ctx.fillRect(charX, charY + bobY - 2*p, p, p);
+        ctx.fillRect(charX + 2*p, charY + bobY - 2*p, p, p);
+        ctx.fillRect(charX + 4*p, charY + bobY - 2*p, p, p);
+        ctx.fillRect(charX - p, charY + bobY, p, p);
+      } else if (t.hairStyle === 'long') {
+        ctx.fillRect(charX - p, charY + bobY - p, 6*p, 2*p);
+        ctx.fillRect(charX - 2*p, charY + bobY, p, 5*p);
+        ctx.fillRect(charX + 4*p, charY + bobY, p, 5*p);
+      } else if (t.hairStyle === 'ponytail') {
+        ctx.fillRect(charX - p, charY + bobY - p, 6*p, 2*p);
+        ctx.fillRect(charX + 4*p, charY + bobY + p, p, p);
+        ctx.fillRect(charX + 5*p, charY + bobY + 2*p, p, 3*p);
+      } else if (t.hairStyle === 'mohawk') {
+        ctx.fillRect(charX + p, charY + bobY - 3*p, 2*p, 3*p);
+        ctx.fillRect(charX, charY + bobY - p, 4*p, p);
+      } else if (t.hairStyle === 'bun') {
+        ctx.fillRect(charX - p, charY + bobY - p, 6*p, 2*p);
+        ctx.fillRect(charX + p, charY + bobY - 3*p, 2*p, 2*p);
+      } else if (t.hairStyle === 'curly') {
+        ctx.fillRect(charX - 2*p, charY + bobY - p, 7*p, 2*p);
+        ctx.fillRect(charX - 2*p, charY + bobY, p, 3*p);
+        ctx.fillRect(charX + 4*p, charY + bobY, p, 3*p);
+        ctx.fillRect(charX - 2*p, charY + bobY + 3*p, p, p);
+      } else { // buzzcut
+        ctx.fillRect(charX, charY + bobY - p, 4*p, p);
+      }
+
+      // Eyes
+      ctx.fillStyle = '#222';
+      if (status === 'idle') {
+        ctx.fillRect(charX + p, charY + bobY + p, p, p);
+        ctx.fillRect(charX + 2*p, charY + bobY + p, p, p);
+      } else {
+        ctx.fillRect(charX, charY + bobY + p, p, p);
+        ctx.fillRect(charX + 2*p, charY + bobY + p, p, p);
+      }
+
+      // Mouth
+      ctx.fillStyle = '#222';
+      if (status === 'working') {
+        ctx.fillRect(charX + p, charY + bobY + 3*p, p, p); // focused
+      }
+
+      // Body
+      ctx.fillStyle = t.shirt;
+      ctx.fillRect(charX - p, charY + bobY + 4*p, 6*p, 5*p);
+
+      // Arms
+      if (status === 'working') {
+        const armOff = frame % 2 === 0 ? 0 : -p;
+        ctx.fillStyle = t.shirt;
+        ctx.fillRect(charX - 3*p, charY + bobY + 5*p, 2*p, 4*p);
+        ctx.fillRect(charX + 5*p, charY + bobY + 5*p, 2*p, 4*p);
+        ctx.fillStyle = t.skin;
+        ctx.fillRect(charX - 3*p + armOff, charY + bobY + 9*p, 2*p, p);
+        ctx.fillRect(charX + 5*p - armOff, charY + bobY + 9*p, 2*p, p);
+      } else if (status === 'thinking') {
+        ctx.fillStyle = t.shirt;
+        ctx.fillRect(charX - 3*p, charY + bobY + 5*p, 2*p, 3*p);
+        ctx.fillRect(charX + 5*p, charY + bobY + 5*p, 2*p, 4*p);
+        ctx.fillStyle = t.skin;
+        ctx.fillRect(charX - 2*p, charY + bobY + 3*p, 2*p, p);
+        ctx.fillRect(charX + 5*p, charY + bobY + 9*p, 2*p, p);
+      } else {
+        ctx.fillStyle = t.shirt;
+        ctx.fillRect(charX - 2*p, charY + bobY + 5*p, 2*p, 4*p);
+        ctx.fillRect(charX + 4*p, charY + bobY + 5*p, 2*p, 4*p);
+        ctx.fillStyle = t.skin;
+        ctx.fillRect(charX - 2*p, charY + bobY + 9*p, 2*p, p);
+        ctx.fillRect(charX + 4*p, charY + bobY + 9*p, 2*p, p);
+      }
+
+      // Pants
+      ctx.fillStyle = t.pants;
+      ctx.fillRect(charX - p, charY + bobY + 9*p, 6*p, 3*p);
+      ctx.fillRect(charX - 2*p, charY + bobY + 12*p, 3*p, p);
+      ctx.fillRect(charX + 3*p, charY + bobY + 12*p, 3*p, p);
+
+      // === THOUGHT BUBBLE ===
+      if (status === 'thinking') {
+        const bx = charX - 12*p;
+        const by = charY + bobY - 4*p;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(bx, by, 8*p, 4*p);
+        ctx.fillRect(bx + p, by - p, 6*p, p);
+        ctx.fillRect(bx + p, by + 4*p, 6*p, p);
+        ctx.fillStyle = '#666';
+        const dotAnim = frame % 4;
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = i <= dotAnim ? '#444' : '#ccc';
+          ctx.fillRect(bx + (1 + i*2)*p, by + p, p, p);
+        }
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(charX - 3*p, charY + bobY - p, 2*p, p);
+        ctx.fillRect(charX - 5*p, charY + bobY - 2*p, p, p);
+      }
+
+      // === KEYBOARD ===
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(cx - 4*p, 25*p, 8*p, 2*p);
+      ctx.fillStyle = '#3a3a3a';
+      for (let i = 0; i < 3; i++) ctx.fillRect(cx - 3*p + i*3*p, 25*p, 2*p, p);
+
+      // === DESK ITEM (varies per character) ===
+      const ix = cx - 17*p;
+      const iy = 23*p;
+
+      if (t.deskItem === 'coffee') {
+        ctx.fillStyle = '#ddd';
+        ctx.fillRect(ix, iy + p, 3*p, 3*p);
+        ctx.fillRect(ix + 3*p, iy + 2*p, p, p);
+        if (status !== 'idle' && frame % 3 < 2) {
+          ctx.fillStyle = 'rgba(255,255,255,0.3)';
+          ctx.fillRect(ix + p, iy - p + (frame % 2)*p, p, p);
+          ctx.fillRect(ix + 2*p, iy - 2*p + (frame % 2)*p, p, p);
+        }
+      } else if (t.deskItem === 'plant') {
+        ctx.fillStyle = '#8b4513';
+        ctx.fillRect(ix, iy + 2*p, 3*p, 2*p);
+        ctx.fillStyle = '#27a33f';
+        ctx.fillRect(ix + p, iy, p, 2*p);
+        ctx.fillRect(ix, iy - p, p, 2*p);
+        ctx.fillRect(ix + 2*p, iy - p, p, 2*p);
+      } else if (t.deskItem === 'cat') {
+        ctx.fillStyle = '#ff9944';
+        ctx.fillRect(ix, iy + p, 3*p, 2*p); // body
+        ctx.fillRect(ix + 3*p, iy, 2*p, 2*p); // head
+        ctx.fillRect(ix + 3*p, iy - p, p, p); // ear
+        ctx.fillRect(ix + 4*p, iy - p, p, p); // ear
+        ctx.fillStyle = '#222';
+        ctx.fillRect(ix + 3*p, iy + p, p, p); // eye
+        // tail wag
+        ctx.fillStyle = '#ff9944';
+        ctx.fillRect(ix - p, iy + (frame % 2)*p, p, 2*p);
+      } else if (t.deskItem === 'book') {
+        ctx.fillStyle = '#cc3333';
+        ctx.fillRect(ix, iy + p, 3*p, 3*p);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(ix + p, iy + 2*p, p, p);
+      } else if (t.deskItem === 'headphones') {
+        ctx.fillStyle = '#333';
+        ctx.fillRect(ix, iy + 2*p, p, 2*p);
+        ctx.fillRect(ix + 3*p, iy + 2*p, p, 2*p);
+        ctx.fillRect(ix, iy + p, 4*p, p);
+        ctx.fillStyle = '#666';
+        ctx.fillRect(ix - p, iy + 2*p, 2*p, p);
+        ctx.fillRect(ix + 3*p, iy + 2*p, 2*p, p);
+      } else if (t.deskItem === 'duck') {
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(ix, iy + p, 3*p, 2*p); // body
+        ctx.fillRect(ix + 2*p, iy, 2*p, 2*p); // head
+        ctx.fillStyle = '#ff8c00';
+        ctx.fillRect(ix + 4*p, iy + p, p, p); // beak
+      }
+    }
+
+    function drawSleepingCharacter(canvas, frame, dirKey) {
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, w, h);
+
+      const p = Math.max(1, Math.floor((canvas.width / 200) * PX));
+      const cx = Math.floor(w / 2);
+      const t = getCharTraits(dirKey || '0');
+
+      const desk = '#5a4410';
+      const deskDark = '#4a3a0d';
+
+      // === DESK (dimmed) ===
+      ctx.fillStyle = desk;
+      ctx.fillRect(cx - 22*p, 26*p, 44*p, 3*p);
+      ctx.fillStyle = deskDark;
+      ctx.fillRect(cx - 22*p, 29*p, 44*p, p);
+      ctx.fillRect(cx - 20*p, 30*p, 2*p, 8*p);
+      ctx.fillRect(cx + 18*p, 30*p, 2*p, 8*p);
+
+      // === MONITOR OFF ===
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(cx - 8*p, 16*p, 16*p, 10*p);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(cx - 7*p, 17*p, 14*p, 8*p);
+      // Standby dot
+      ctx.fillStyle = '#333';
+      ctx.fillRect(cx, 20*p, p, p);
+      // Stand
+      ctx.fillStyle = '#222';
+      ctx.fillRect(cx - 2*p, 26*p, 4*p, p);
+      ctx.fillRect(cx - p, 25*p, 2*p, p);
+
+      // === CHAIR ===
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(cx + 14*p, 22*p, 6*p, 2*p);
+      ctx.fillRect(cx + 18*p, 16*p, 2*p, 6*p);
+      ctx.fillRect(cx + 15*p, 24*p, p, 6*p);
+      ctx.fillRect(cx + 19*p, 24*p, p, 6*p);
+      ctx.fillStyle = '#222';
+      ctx.fillRect(cx + 14*p, 30*p, 2*p, p);
+      ctx.fillRect(cx + 19*p, 30*p, 2*p, p);
+
+      // === SLEEPING CHARACTER (head on desk) ===
+      const charX = cx + 4*p;
+      const charY = 22*p;
+
+      // Body slumped forward
+      ctx.fillStyle = t.shirt;
+      ctx.globalAlpha = 0.6;
+      ctx.fillRect(charX, charY - 4*p, 6*p, 5*p);
+
+      // Arms on desk
+      ctx.fillRect(charX - 2*p, charY - 2*p, 2*p, 3*p);
+      ctx.fillRect(charX + 6*p, charY - 2*p, 2*p, 3*p);
+      ctx.fillStyle = t.skin;
+      ctx.fillRect(charX - 3*p, charY, 3*p, p);
+      ctx.fillRect(charX + 6*p, charY, 3*p, p);
+
+      // Head resting on arms
+      ctx.fillStyle = t.skin;
+      ctx.fillRect(charX + p, charY - 6*p, 4*p, 3*p);
+
+      // Hair
+      ctx.fillStyle = t.hair;
+      ctx.fillRect(charX, charY - 7*p, 6*p, 2*p);
+
+      // ZZZ
+      ctx.fillStyle = '#555';
+      const zOff = frame % 3;
+      ctx.fillRect(charX + 8*p, charY - (8 + zOff)*p, 2*p, p);
+      if (zOff > 0) ctx.fillRect(charX + 10*p, charY - (10 + zOff)*p, 3*p, p);
+      if (zOff > 1) ctx.fillRect(charX + 13*p, charY - (12 + zOff)*p, 3*p, p);
+
+      // Legs under desk
+      ctx.fillStyle = t.pants;
+      ctx.fillRect(charX, charY + p, 3*p, 4*p);
+      ctx.fillRect(charX + 3*p, charY + p, 3*p, 4*p);
+
+      ctx.globalAlpha = 1.0;
+
+      // Keyboard
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(cx - 4*p, 25*p, 8*p, 2*p);
+    }
+
+    /* ── Avatar wrapper ── */
+    function drawAvatar(canvas, status, pid) {
+      if (status === 'idle') {
+        drawSleepingCharacter(canvas, animFrame, pid);
+      } else {
+        drawPixelCharacter(canvas, status, animFrame, pid);
+      }
+    }
+
+    /* ── Animation loop (~15fps) ── */
+    function tick(ts) {
+      if (ts - lastTickTs > 66) {
+        animFrame++;
+        lastTickTs = ts;
+        document.querySelectorAll('.avatar-canvas').forEach(canvas => {
+          const card = canvas.closest('.card');
+          if (!card) return;
+          drawAvatar(canvas, card.dataset.status, card.dataset.pid);
+        });
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    /* ── Init ── */
+    document.getElementById('btn-new-session').addEventListener('click', e => {
+      if (typeof showNewSession === 'function') showNewSession(e);
+    });
+    document.getElementById('new-session-slot').addEventListener('click', e => {
+      if (typeof showNewSession === 'function') showNewSession(e);
+    });
+    document.getElementById('new-session-slot').addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (typeof showNewSession === 'function') showNewSession(e);
+      }
+    });
+
+    connectSSE();
+  </script>
+
+</body>
+</html>
