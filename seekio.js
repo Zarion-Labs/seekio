@@ -379,7 +379,10 @@ Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
     } else {
       try {
         execSync(`where wt`, { stdio: 'ignore' });
-        execSync(`wt -d "${dirPath}" cmd /k "${tmpBat}"`, { stdio: 'ignore' });
+        // `.bat` already starts with `cd /d "${dirPath}"`, so wt does not
+        // need -d. Dropping -d avoids wt's arg parser mangling paths with
+        // multiple space-separated segments (e.g. "Zarion Labs\seekio").
+        execSync(`wt cmd /k "${tmpBat}"`, { stdio: 'ignore' });
       } catch {
         execSync(`start "seekIO" cmd /k "${tmpBat}"`, { shell: true, stdio: 'ignore' });
       }
