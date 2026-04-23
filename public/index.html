@@ -518,6 +518,85 @@
   }
   .ts[title]:hover { color: #8a8a9a; cursor: help; }
 
+  /* ── Terminal tab ── */
+  .term-body {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: #0d0d14;
+    color: #d4d4d4;
+    padding: 12px;
+    position: relative;
+    height: 100%;
+    overflow-y: auto;
+  }
+  .term-entry {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    animation: termFadeIn 0.2s ease-out;
+  }
+  @keyframes termFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .term-entry .term-main { flex: 1; min-width: 0; word-break: break-word; }
+  .term-user .term-main::before { content: '> '; color: #27c93f; }
+  .term-user .term-main { color: #fff; border-top: 1px dashed #1f1f2f; padding-top: 6px; margin-top: 4px; }
+  .term-assistant .term-main { color: #c8c8d0; white-space: pre-wrap; }
+  .term-tool_call .term-main { color: #b4b4c4; font-size: 11px; }
+  .term-tool_call .tc-header { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .term-tool_call .tc-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .term-tool_call .tc-dot.complete { background: #27c93f; }
+  .term-tool_call .tc-dot.running { background: #ffbd2e; animation: termPulse 1.2s infinite; }
+  .term-tool_call .tc-dot.error { background: #e94560; }
+  @keyframes termPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .term-tool_call .tc-icon { color: #27c93f; }
+  .term-tool_call .tc-preview { color: #8a8a9a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .term-tool_call pre {
+    margin: 4px 0 0 16px;
+    padding: 6px 8px;
+    background: #080810;
+    border: 1px solid #1a1a2a;
+    border-radius: 3px;
+    color: #8a8a9a;
+    font-size: 10px;
+    max-height: 200px;
+    overflow: auto;
+    white-space: pre-wrap;
+  }
+  .term-tool_result .term-main {
+    color: #8a8a9a;
+    font-size: 10px;
+    margin-left: 16px;
+    max-height: 160px;
+    overflow: hidden;
+    white-space: pre-wrap;
+  }
+  .term-tool_result.error .term-main { color: #e94560; }
+  .term-thinking .term-main { color: #6a6a8a; font-style: italic; }
+  .term-empty {
+    padding: 24px;
+    text-align: center;
+    color: #555;
+    font-style: italic;
+  }
+  .term-newchip {
+    position: sticky;
+    bottom: 8px;
+    background: #27c93f;
+    color: #000;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    display: none;
+    margin: 8px auto 0;
+  }
+  .term-body.has-new .term-newchip { display: block; }
+
   .tool-group-divider {
     font-size: 9px;
     color: #555;
@@ -701,7 +780,8 @@
   <div id="tool-drawer">
       <div class="drawer-handle" aria-hidden="true"></div>
       <div class="drawer-tabs">
-        <button class="drawer-tab active" id="drawer-tab-tools" onclick="switchDrawerTab('tools')">⚙ TOOLS <span class="drawer-badge" id="drawer-badge-tools">0</span></button>
+        <button class="drawer-tab active" id="drawer-tab-terminal" onclick="switchDrawerTab('terminal')">▶ TERMINAL</button>
+        <button class="drawer-tab inactive" id="drawer-tab-tools" onclick="switchDrawerTab('tools')">⚙ TOOLS <span class="drawer-badge" id="drawer-badge-tools">0</span></button>
         <button class="drawer-tab inactive" id="drawer-tab-mailbox" onclick="switchDrawerTab('mailbox')">✉ MAILBOX <span class="drawer-badge" id="drawer-badge-mailbox">0</span></button>
       </div>
       <div class="drawer-body" id="drawer-body"></div>
@@ -741,7 +821,7 @@
     /* ── State Variables ── */
     let lastData = null;
     let drawerPid = null;
-    let activeDrawerTab = 'tools';
+    let activeDrawerTab = 'terminal';
     let animFrame = 0;
     let lastTickTs = 0;
     const activeBusyNotices = new Map();
@@ -913,8 +993,10 @@
 
     function switchDrawerTab(tab) {
       activeDrawerTab = tab;
-      document.getElementById('drawer-tab-tools').className = 'drawer-tab ' + (tab === 'tools' ? 'active' : 'inactive');
-      document.getElementById('drawer-tab-mailbox').className = 'drawer-tab ' + (tab === 'mailbox' ? 'active' : 'inactive');
+      for (const t of ['terminal', 'tools', 'mailbox']) {
+        const el = document.getElementById('drawer-tab-' + t);
+        if (el) el.className = 'drawer-tab ' + (tab === t ? 'active' : 'inactive');
+      }
       renderDrawer();
     }
 
@@ -941,7 +1023,10 @@
         if (toolId) toolScrolls[toolId] = el.scrollTop;
       });
 
-      if (activeDrawerTab === 'tools') {
+      if (activeDrawerTab === 'terminal') {
+        body.innerHTML = renderTerminalTab(session);
+        termAfterRender(session);
+      } else if (activeDrawerTab === 'tools') {
         body.innerHTML = renderToolsTab(session);
       } else {
         body.innerHTML = renderMailboxTab(session);
@@ -1037,6 +1122,95 @@
       if (expandedToolEntries.has(toolId)) expandedToolEntries.delete(toolId);
       else expandedToolEntries.add(toolId);
       renderDrawer();
+    }
+
+    /* ── Terminal tab ── */
+    const termLastCount = new Map();   // pid -> last rendered timeline length
+    const termScrollState = new Map(); // pid -> { pinned, hasNew }
+
+    function renderTerminalTab(session) {
+      const t = session.timeline || [];
+      if (!t.length) return '<div class="term-empty">— no messages yet —</div>';
+      const entries = t.map((e, i) => renderTerminalEntry(e, i)).join('');
+      return `<div class="term-body" id="term-body-${session.pid}"
+                   onscroll="termOnScroll(event, ${session.pid})">
+                ${entries}
+                <button class="term-newchip" onclick="termScrollToBottom(${session.pid})">↓ new messages</button>
+              </div>`;
+    }
+
+    function renderTerminalEntry(e) {
+      const ts = tsSpan(e.timestamp);
+      const cls = 'term-entry term-' + e.type;
+      if (e.type === 'user' || e.type === 'assistant' || e.type === 'thinking') {
+        return `<div class="${cls}"><div class="term-main">${escapeHtml(e.text || '')}</div>${ts}</div>`;
+      }
+      if (e.type === 'tool_call') {
+        const preview = typeof e.input === 'object'
+          ? escapeHtml(JSON.stringify(e.input).slice(0, 120))
+          : escapeHtml(String(e.input || '').slice(0, 120));
+        const statusClass = e.status === 'running' ? 'running' : (e.status === 'error' ? 'error' : 'complete');
+        const inputJson = escapeHtml(JSON.stringify(e.input, null, 2));
+        return `<div class="${cls}" data-tc-id="${escapeHtml(e.toolId || '')}">
+                  <div class="term-main">
+                    <div class="tc-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                      <span class="tc-dot ${statusClass}"></span>
+                      <span class="tc-icon">🔧</span>
+                      <span>${escapeHtml(e.toolName || 'unknown')}</span>
+                      <span class="tc-preview">· ${preview}</span>
+                    </div>
+                    <pre style="display:none">${inputJson}</pre>
+                  </div>
+                  ${ts}
+                </div>`;
+      }
+      if (e.type === 'tool_result') {
+        const errCls = e.isError ? ' error' : '';
+        return `<div class="${cls}${errCls}">
+                  <div class="term-main">${escapeHtml(e.output || '')}</div>
+                  ${ts}
+                </div>`;
+      }
+      return '';
+    }
+
+    function termOnScroll(event, pid) {
+      const el = event.target;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
+      const state = termScrollState.get(pid) || { pinned: true, hasNew: false };
+      state.pinned = atBottom;
+      if (atBottom) {
+        state.hasNew = false;
+        el.classList.remove('has-new');
+      }
+      termScrollState.set(pid, state);
+    }
+
+    function termScrollToBottom(pid) {
+      const el = document.getElementById('term-body-' + pid);
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+      const state = { pinned: true, hasNew: false };
+      el.classList.remove('has-new');
+      termScrollState.set(pid, state);
+    }
+
+    function termAfterRender(session) {
+      if (activeDrawerTab !== 'terminal') return;
+      const pid = session.pid;
+      const el = document.getElementById('term-body-' + pid);
+      if (!el) return;
+      const state = termScrollState.get(pid) || { pinned: true, hasNew: false };
+      const prevCount = termLastCount.get(pid) || 0;
+      const newCount = (session.timeline || []).length;
+      if (state.pinned) {
+        el.scrollTop = el.scrollHeight;
+      } else if (newCount > prevCount) {
+        state.hasNew = true;
+        el.classList.add('has-new');
+      }
+      termLastCount.set(pid, newCount);
+      termScrollState.set(pid, state);
     }
 
     function renderMailboxTab(session) {
