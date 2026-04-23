@@ -561,9 +561,9 @@ function parseSessionDir(projDir, count) {
             if (c.type === 'tool_result') hasToolResult = true;
           }
         }
-        if (text) msgs.push({ role, text: text.slice(0, 2000), hasToolUse, hasToolResult });
+        if (text) msgs.push({ role, text: text.slice(0, 2000), hasToolUse, hasToolResult, timestamp: d.timestamp || null });
         else if (hasToolUse || hasToolResult) {
-          msgs.push({ role, text: hasToolUse ? '(using tools...)' : '(tool result)', hasToolUse, hasToolResult });
+          msgs.push({ role, text: hasToolUse ? '(using tools...)' : '(tool result)', hasToolUse, hasToolResult, timestamp: d.timestamp || null });
         }
       } catch {}
     }
@@ -706,7 +706,7 @@ function readSubAgents(projDir) {
               if (c.type === 'text' && c.text?.trim()) { text = c.text.trim(); break; }
             }
           }
-          if (text) messages.push({ role, text: text.slice(0, 500) });
+          if (text) messages.push({ role, text: text.slice(0, 500), timestamp: d.timestamp || null });
         }
 
         if (!messages.length) return null;
@@ -952,6 +952,7 @@ function parseToolCalls(lines) {
           input: c.input || {}, keyArg: getKeyArg(c.name, c.input || {}),
           result: null, isError: false, status: 'running',
           durationMs: null, startedAt: ts || 0, endedAt: null,
+          timestamp: d.timestamp || null,
         };
         pending[c.id] = toolCalls.length;
         toolCalls.push(tc);
