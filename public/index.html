@@ -666,6 +666,35 @@
   .tool-entry-expanded.visible { display: block; }
   .tool-entry-exp-label { color: #444; margin-bottom: 2px; }
 
+  /* Mailbox groups (dedupe) */
+  .mb-group { margin-bottom: 6px; }
+  .mb-group.multi {
+    border: 1px solid #1a1a2a;
+    border-radius: 4px;
+    padding: 4px;
+    background: #08080f;
+  }
+  .mb-group-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .mb-group-header:hover { background: #111122; }
+  .mb-group-badge {
+    display: inline-block;
+    background: #1a1a35;
+    color: #8a8a9a;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    margin-left: 6px;
+  }
+  .mb-group.multi > .mail-thread { margin-left: 14px; }
+
   .mail-thread {
     background: #0a0a1a;
     border-radius: 4px;
@@ -1220,64 +1249,123 @@
       }
 
       const isActive = a => a.status === 'working' || a.status === 'thinking';
-      const sorted = [...agents].sort((a, b) => isActive(a) === isActive(b) ? 0 : isActive(a) ? -1 : 1);
 
-      return sorted.map(agent => {
-        const isOpen = expandedThreads.has(agent.agentId);
-        const messages = agent.messages || [];
-        const dotColor = agent.status === 'working' ? '#27c93f' : agent.status === 'thinking' ? '#ffbd2e' : '#555';
-        const lastMsg = messages.length ? messages[messages.length - 1] : null;
-        const prevCount = prevSubAgentMsgCounts[agent.agentId] || 0;
-        const isNew = messages.length > prevCount;
-        prevSubAgentMsgCounts[agent.agentId] = messages.length;
-        const userNick = agentNicknames[agent.agentId];
-        const displayName = userNick || agent.name;
-        const originLabel = userNick ? '✎ renamed' : agent.nameOrigin === 'renamed' ? '✓ dispatched' : 'generated';
+      // Build groups keyed by display name (nickname > name > agentId fallback).
+      // Multiple dispatches of the same role/name collapse into one group row
+      // with a ×N badge; click the group to see all members.
+      const withKey = agents.map(a => {
+        const nick = agentNicknames[a.agentId];
+        const key = nick || a.name || a.agentId;
+        return { ...a, _groupKey: key, _displayName: nick || a.name };
+      });
+      const groups = new Map();
+      for (const a of withKey) {
+        if (!groups.has(a._groupKey)) groups.set(a._groupKey, []);
+        groups.get(a._groupKey).push(a);
+      }
+      const sorted = [...groups.entries()].map(([key, members]) => {
+        members.sort((x, y) => (y.lastModifiedMs || 0) - (x.lastModifiedMs || 0));
+        return { key, members, latest: members[0], active: members.some(isActive) };
+      }).sort((a, b) => {
+        if (a.active !== b.active) return a.active ? -1 : 1;
+        return (b.latest.lastModifiedMs || 0) - (a.latest.lastModifiedMs || 0);
+      });
 
-        let bodyHtml = '';
-        if (isOpen) {
-          let convHtml = '';
-          for (const msg of messages) {
-            const roleLabel = msg.role === 'user' ? 'Lead →' : `← ${escapeHtml(displayName)}`;
-            const roleClass = msg.role === 'user' ? 'lead' : 'agent';
-            convHtml += `
-              <div class="mail-conv-msg">
-                <div class="mail-conv-role ${roleClass}">${roleLabel}</div>
-                <div class="mail-conv-text">${escapeHtml(msg.text)}</div>
-              </div>`;
-          }
-          if (agent.toolCalls && agent.toolCalls.length) {
-            const chips = agent.toolCalls.map(tc =>
-              `<span class="mail-tool-chip ${tc.status}">${escapeHtml(tc.name)} ${tc.status === 'done' ? '✓' : tc.status === 'error' ? '✗' : '⟳'}</span>`
-            ).join('');
-            convHtml += `<div class="mail-conv-msg"><div class="mail-conv-tools">${chips}</div></div>`;
-          }
-          bodyHtml = `
-            <div class="mail-thread-body open">${convHtml}</div>
-            <div class="mail-readonly">👁 read-only</div>`;
+      return sorted.map(g => renderAgentGroup(g)).join('');
+    }
+
+    function renderAgentGroup(g) {
+      const count = g.members.length;
+      const expanded = count === 1 || mailboxGroupExpanded.has(g.key);
+      const latest = g.latest;
+      const dotColor = latest.status === 'working' ? '#27c93f' : latest.status === 'thinking' ? '#ffbd2e' : '#555';
+      const roleColor = agentRoleColor(g.key) || '';
+      const headerTs = tsSpan(new Date(latest.lastModifiedMs).toISOString());
+      const badge = count > 1 ? `<span class="mb-group-badge">×${count}</span>` : '';
+      const chev = count > 1 ? (expanded ? '▾' : '▸') : '';
+
+      const header = count > 1 ? `
+        <div class="mb-group-header" onclick="toggleMailboxGroup('${escapeHtml(g.key).replace(/'/g, "\\'")}',event)">
+          <span class="mail-thread-dots">
+            <span class="mail-thread-dot" style="background:${dotColor}"></span>
+            ${roleColor ? `<span class="mail-thread-role-dot" style="background:${roleColor}"></span>` : ''}
+          </span>
+          <div class="mail-thread-info">
+            <div class="mail-thread-name">${escapeHtml(g.key)} ${badge}</div>
+          </div>
+          ${headerTs}
+          <span class="mail-thread-arrow">${chev}</span>
+        </div>` : '';
+
+      const body = expanded ? g.members.map(agent => renderAgentThread(agent)).join('') : '';
+      return `<div class="mb-group ${count > 1 ? 'multi' : ''}">${header}${body}</div>`;
+    }
+
+    function renderAgentThread(agent) {
+      const isOpen = expandedThreads.has(agent.agentId);
+      const messages = agent.messages || [];
+      const dotColor = agent.status === 'working' ? '#27c93f' : agent.status === 'thinking' ? '#ffbd2e' : '#555';
+      const lastMsg = messages.length ? messages[messages.length - 1] : null;
+      const prevCount = prevSubAgentMsgCounts[agent.agentId] || 0;
+      const isNew = messages.length > prevCount;
+      prevSubAgentMsgCounts[agent.agentId] = messages.length;
+      const userNick = agentNicknames[agent.agentId];
+      const displayName = userNick || agent.name;
+      const originLabel = userNick ? '✎ renamed' : agent.nameOrigin === 'renamed' ? '✓ dispatched' : 'generated';
+      const headerTs = tsSpan(new Date(agent.lastModifiedMs).toISOString());
+
+      let bodyHtml = '';
+      if (isOpen) {
+        let convHtml = '';
+        for (const msg of messages) {
+          const roleLabel = msg.role === 'user' ? 'Lead →' : `← ${escapeHtml(displayName)}`;
+          const roleClass = msg.role === 'user' ? 'lead' : 'agent';
+          convHtml += `
+            <div class="mail-conv-msg">
+              <div class="mail-conv-role ${roleClass}">${roleLabel} ${tsSpan(msg.timestamp)}</div>
+              <div class="mail-conv-text">${escapeHtml(msg.text)}</div>
+            </div>`;
         }
+        if (agent.toolCalls && agent.toolCalls.length) {
+          const chips = agent.toolCalls.map(tc =>
+            `<span class="mail-tool-chip ${tc.status}" title="${escapeHtml((tc.timestamp || ''))}">${escapeHtml(tc.name)} ${tc.status === 'done' ? '✓' : tc.status === 'error' ? '✗' : '⟳'}</span>`
+          ).join('');
+          convHtml += `<div class="mail-conv-msg"><div class="mail-conv-tools">${chips}</div></div>`;
+        }
+        bodyHtml = `
+          <div class="mail-thread-body open">${convHtml}</div>
+          <div class="mail-readonly">👁 read-only</div>`;
+      }
 
-        return `
-          <div class="mail-thread ${isNew ? 'mail-thread-flash' : ''}" id="thread-${escapeHtml(agent.agentId)}">
-            <div class="mail-thread-header" onclick="toggleThread('${escapeHtml(agent.agentId)}',event)">
-              <span class="mail-thread-dots">
-                <span class="mail-thread-dot" style="background:${dotColor}"></span>
-                ${agentRoleColor(displayName) ? `<span class="mail-thread-role-dot" style="background:${agentRoleColor(displayName)}"></span>` : ''}
-              </span>
-              <div class="mail-thread-info">
-                <div class="mail-thread-name" id="agent-name-${escapeHtml(agent.agentId)}" data-generated="${escapeHtml(agent.name)}">
-                  ${escapeHtml(displayName)}
-                  <span class="mail-thread-origin">${originLabel}</span>
-                  <button class="mail-thread-rename-btn" title="Rename" onclick="startRenameAgent('${escapeHtml(agent.agentId)}',event)">✎</button>
-                </div>
-                ${lastMsg ? `<div class="mail-thread-preview">${escapeHtml(lastMsg.text.slice(0, 50))}</div>` : ''}
+      return `
+        <div class="mail-thread ${isNew ? 'mail-thread-flash' : ''}" id="thread-${escapeHtml(agent.agentId)}">
+          <div class="mail-thread-header" onclick="toggleThread('${escapeHtml(agent.agentId)}',event)">
+            <span class="mail-thread-dots">
+              <span class="mail-thread-dot" style="background:${dotColor}"></span>
+              ${agentRoleColor(displayName) ? `<span class="mail-thread-role-dot" style="background:${agentRoleColor(displayName)}"></span>` : ''}
+            </span>
+            <div class="mail-thread-info">
+              <div class="mail-thread-name" id="agent-name-${escapeHtml(agent.agentId)}" data-generated="${escapeHtml(agent.name)}">
+                ${escapeHtml(displayName)}
+                <span class="mail-thread-origin">${originLabel}</span>
+                <button class="mail-thread-rename-btn" title="Rename" onclick="startRenameAgent('${escapeHtml(agent.agentId)}',event)">✎</button>
               </div>
-              <div class="mail-thread-meta">${messages.length} msgs</div>
-              <span class="mail-thread-arrow">${isOpen ? '▾' : '▸'}</span>
+              ${lastMsg ? `<div class="mail-thread-preview">${escapeHtml(lastMsg.text.slice(0, 50))}</div>` : ''}
             </div>
-            ${bodyHtml}
-          </div>`;
-      }).join('');
+            <div class="mail-thread-meta">${messages.length} msgs</div>
+            ${headerTs}
+            <span class="mail-thread-arrow">${isOpen ? '▾' : '▸'}</span>
+          </div>
+          ${bodyHtml}
+        </div>`;
+    }
+
+    const mailboxGroupExpanded = new Set();
+    function toggleMailboxGroup(key, event) {
+      event.stopPropagation();
+      if (mailboxGroupExpanded.has(key)) mailboxGroupExpanded.delete(key);
+      else mailboxGroupExpanded.add(key);
+      renderDrawer();
     }
 
     function toggleThread(agentId, event) {
