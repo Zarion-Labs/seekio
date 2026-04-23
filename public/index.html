@@ -368,13 +368,78 @@
   }
   .dir-browser::-webkit-scrollbar { width: 4px; }
   .dir-browser::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
-  .dir-entry {
-    padding: 6px 10px; font-size: 11px; color: #888; cursor: pointer;
-    display: flex; align-items: center; gap: 6px; transition: background 0.1s;
+
+  /* ── Directory picker (DP) ── */
+  .dp-breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    background: #0a0a12;
+    border: 1px solid #222;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    color: #8a8a9a;
+    cursor: text;
+    min-height: 32px;
   }
-  .dir-entry:hover { background: #1a1a2e; color: #cc7832; }
-  .dir-icon { color: #555; font-size: 10px; }
-  .dir-up { color: #666; font-style: italic; }
+  .dp-crumb {
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    color: #8a8a9a;
+    user-select: none;
+  }
+  .dp-crumb:hover { background: #1a1a2e; color: #d4d4d4; }
+  .dp-crumb.active { color: #27c93f; font-weight: 600; cursor: default; }
+  .dp-crumb.active:hover { background: transparent; }
+  .dp-sep { color: #444; font-size: 10px; }
+  .dp-edit-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #d4d4d4;
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  .dp-list {
+    margin-top: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #0a0a12;
+    border: 1px solid #222;
+    border-radius: 4px;
+  }
+  .dp-list::-webkit-scrollbar { width: 4px; }
+  .dp-list::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+  .dp-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    color: #b4b4c4;
+    cursor: pointer;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    border-left: 2px solid transparent;
+  }
+  .dp-item:hover { background: #16162a; }
+  .dp-item.focused { background: #1a1a35; border-left-color: #27c93f; }
+  .dp-item.up { color: #8a8a9a; }
+  .dp-item.disabled { opacity: 0.3; cursor: not-allowed; }
+  .dp-chevron { color: #555; margin-right: 8px; width: 10px; display: inline-block; }
+  .dp-empty, .dp-error {
+    padding: 10px;
+    color: #666;
+    font-style: italic;
+    font-size: 12px;
+    text-align: center;
+  }
+  .dp-error { color: #e94560; }
   .modal-check {
     display: flex; align-items: center; gap: 8px; margin-top: 4px;
   }
