@@ -159,7 +159,7 @@ const macAdapter = {
           try { cwd = execSync(`lsof -p ${pid} 2>/dev/null | grep cwd | awk '{print $NF}'`, { encoding: 'utf8' }).trim(); } catch {}
           if (!cwd) try { cwd = execSync(`lsof -p ${pid} -Fn 2>/dev/null | grep '^n/' | head -1`, { encoding: 'utf8' }).trim().replace(/^n/, ''); } catch {}
 
-          const { messages, toolCalls, currentTool } = getSessionMessages(cwd, 20);
+          const { messages, toolCalls, currentTool, timeline } = getSessionMessages(cwd, 20);
 
           let status = 'idle';
           const cpuNum = parseFloat(cpu);
@@ -179,7 +179,7 @@ const macAdapter = {
           return {
             pid: pidStr, tty, cpu: `${cpu}%`, mem: `${mem}%`, elapsed, cwd,
             projectName: sessionLabel ? `${sessionLabel} · ${cwd ? path.basename(cwd) : 'unknown'}` : cwd ? path.basename(cwd) : 'unknown',
-            status, messages, toolCalls, currentTool, subAgents,
+            status, messages, toolCalls, currentTool, subAgents, timeline: timeline || [],
           };
         } catch { return null; }
       }).filter(Boolean);
@@ -332,7 +332,7 @@ Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
           if (bestDir) projDirOverride = bestDir;
         }
 
-        const { messages, toolCalls, currentTool } = projDirOverride
+        const { messages, toolCalls, currentTool, timeline } = projDirOverride
           ? getSessionMessagesByProjDir(projDirOverride, 20)
           : getSessionMessages(cwd, 20);
 
@@ -374,6 +374,7 @@ Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
           toolCalls,
           currentTool,
           subAgents,
+          timeline: timeline || [],
           hidden: !p.hasWindow,
         };
       });
@@ -534,18 +535,19 @@ function readFileTail(filePath, readSize) {
 // parses it, and returns { messages, toolCalls, currentTool }.
 function parseSessionDir(projDir, count) {
   try {
-    if (!fs.existsSync(projDir)) return { messages: [], toolCalls: [], currentTool: null };
+    if (!fs.existsSync(projDir)) return { messages: [], toolCalls: [], currentTool: null, timeline: [] };
     const files = fs.readdirSync(projDir)
       .filter(f => f.endsWith('.jsonl') && !f.includes('subagent'))
       .map(f => ({ name: f, mtime: fs.statSync(path.join(projDir, f)).mtimeMs }))
       .sort((a, b) => b.mtime - a.mtime);
-    if (!files.length) return { messages: [], toolCalls: [], currentTool: null };
+    if (!files.length) return { messages: [], toolCalls: [], currentTool: null, timeline: [] };
 
     const filePath = path.join(projDir, files[0].name);
-    const raw = readFileTail(filePath, 65536);
+    const raw = readFileTail(filePath, 256 * 1024);
     const lines = raw.split('\n').filter(Boolean);
 
     const msgs = [];
+    const timeline = [];
     for (const line of lines) {
       try {
         const d = JSON.parse(line);
@@ -565,6 +567,33 @@ function parseSessionDir(projDir, count) {
         else if (hasToolUse || hasToolResult) {
           msgs.push({ role, text: hasToolUse ? '(using tools...)' : '(tool result)', hasToolUse, hasToolResult, timestamp: d.timestamp || null });
         }
+
+        // Timeline entries (expanded view — one entry per distinct content part).
+        const ts = d.timestamp || null;
+        if (role === 'user' && typeof content === 'string') {
+          timeline.push({ type: 'user', timestamp: ts, text: content.slice(0, 2000) });
+        } else if (role === 'user' && Array.isArray(content)) {
+          for (const c of content) {
+            if (c.type === 'tool_result') {
+              let output = '';
+              if (typeof c.content === 'string') output = c.content;
+              else if (Array.isArray(c.content)) output = c.content.map(x => x.text || '').join('\n');
+              timeline.push({ type: 'tool_result', timestamp: ts, toolId: c.tool_use_id, output: output.slice(0, 4000), isError: !!c.is_error });
+            } else if (c.type === 'text' && c.text) {
+              timeline.push({ type: 'user', timestamp: ts, text: c.text.slice(0, 2000) });
+            }
+          }
+        } else if (role === 'assistant' && Array.isArray(content)) {
+          for (const c of content) {
+            if (c.type === 'text' && c.text) {
+              timeline.push({ type: 'assistant', timestamp: ts, text: c.text.slice(0, 4000) });
+            } else if (c.type === 'tool_use') {
+              timeline.push({ type: 'tool_call', timestamp: ts, toolName: c.name, toolId: c.id, input: c.input, status: 'complete' });
+            } else if (c.type === 'thinking' && c.thinking) {
+              timeline.push({ type: 'thinking', timestamp: ts, text: c.thinking.slice(0, 2000) });
+            }
+          }
+        }
       } catch {}
     }
 
@@ -572,8 +601,6 @@ function parseSessionDir(projDir, count) {
     const running = toolCalls.filter(tc => tc.status === 'running');
     const currentTool = running.length ? running[running.length - 1].name : null;
 
-    // Preserve last 'count' real-text messages so tool-heavy sessions don't wipe history.
-    // Include any trailing tool-only messages so status detection stays accurate.
     const realMsgs = msgs.filter(m => m.text !== '(using tools...)' && m.text !== '(tool result)');
     const recentReal = realMsgs.slice(-count);
     let displayMsgs;
@@ -584,10 +611,11 @@ function parseSessionDir(projDir, count) {
       displayMsgs = oldestIdx >= 0 ? msgs.slice(oldestIdx) : msgs.slice(-count);
     }
 
-    return { messages: displayMsgs, toolCalls, currentTool };
+    // Cap timeline at last 100 entries.
+    return { messages: displayMsgs, toolCalls, currentTool, timeline: timeline.slice(-100) };
   } catch (err) {
     console.error('[parseSessionDir]', projDir, err.message);
-    return { messages: [], toolCalls: [], currentTool: null };
+    return { messages: [], toolCalls: [], currentTool: null, timeline: [] };
   }
 }
 
