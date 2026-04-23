@@ -712,8 +712,11 @@
       <h2>New Claude Session</h2>
       <div class="modal-field">
         <label>Project directory</label>
-        <input class="modal-input" id="new-dir" value="/">
-        <div class="dir-browser" id="dir-browser"></div>
+        <div id="dp-root">
+          <div class="dp-breadcrumb" id="dp-breadcrumb" onclick="dpEnterEditMode(event)"></div>
+          <div class="dp-list" id="dp-list" tabindex="0"></div>
+        </div>
+        <input type="hidden" id="new-dir" value="">
         <div style="margin-top:6px;display:flex;gap:6px">
           <input class="modal-input" id="new-folder-name" placeholder="new folder name" style="font-size:11px;padding:6px 8px">
           <button class="btn btn-send" onclick="createFolder()" style="padding:6px 10px;font-size:9px">create</button>
@@ -1163,91 +1166,198 @@
     function showNewSession(event) {
       event.stopPropagation();
       document.getElementById('new-modal').classList.add('visible');
-      const dirInput = document.getElementById('new-dir');
-      dirInput.focus();
-      dirInput.setSelectionRange(dirInput.value.length, dirInput.value.length);
-      browseDir(dirInput.value);
+      dpInit();
     }
 
-    let cachedDir = '';
-    let cachedEntries = [];
+    /* ── DirectoryPicker ── */
+    const DP = {
+      sep: '/',
+      homedir: '',
+      current: '',
+      entries: [],
+      focusedIdx: -1,
+      editMode: false,
+      errorMsg: null,
+    };
 
-    async function browseDir(inputVal) {
-      const lastSlash = inputVal.lastIndexOf('/');
-      const parentDir = inputVal.substring(0, lastSlash + 1);
-      const filter = inputVal.substring(lastSlash + 1).toLowerCase();
+    function dpDetectSep(p) {
+      return /^[A-Za-z]:/.test(p) ? '\\' : '/';
+    }
+    function dpIsRoot(p) {
+      if (DP.sep === '\\') return /^[A-Za-z]:\\?$/.test(p);
+      return p === '/';
+    }
+    function dpParent(p) {
+      const s = DP.sep;
+      const trimmed = p.replace(new RegExp('\\' + s + '+$'), '');
+      if (dpIsRoot(p) || dpIsRoot(trimmed)) return p;
+      const idx = trimmed.lastIndexOf(s);
+      if (idx <= 0) return s === '\\' ? (trimmed.slice(0, 2) + '\\') : '/';
+      if (s === '\\' && idx === 2) return trimmed.slice(0, 3);
+      return trimmed.slice(0, idx);
+    }
+    function dpJoin(parent, name) {
+      const s = DP.sep;
+      if (parent.endsWith(s)) return parent + name;
+      return parent + s + name;
+    }
 
-      if (parentDir !== cachedDir) {
-        try {
-          const r = await fetch('/api/ls?dir=' + encodeURIComponent(parentDir));
-          const d = await r.json();
-          cachedDir = parentDir;
-          cachedEntries = d.ok ? d.entries : [];
-        } catch { cachedEntries = []; }
+    async function dpInit() {
+      try {
+        const r = await fetch('/api/ls?dir=');
+        const d = await r.json();
+        if (d.resolved) {
+          DP.homedir = d.resolved;
+          DP.sep = dpDetectSep(d.resolved);
+          DP.current = d.resolved;
+          DP.entries = d.ok ? d.entries : [];
+          DP.errorMsg = d.ok ? null : d.error;
+        }
+      } catch {
+        DP.errorMsg = 'Failed to load';
+      }
+      document.getElementById('new-dir').value = DP.current;
+      dpRender();
+    }
+
+    async function dpNavigate(target) {
+      try {
+        const r = await fetch('/api/ls?dir=' + encodeURIComponent(target));
+        const d = await r.json();
+        if (d.ok) {
+          DP.current = d.resolved || target;
+          DP.entries = d.entries;
+          DP.errorMsg = null;
+        } else {
+          DP.errorMsg = d.error || 'unknown error';
+          DP.entries = [];
+          DP.current = target;
+        }
+      } catch {
+        DP.errorMsg = 'network';
+        DP.entries = [];
+      }
+      DP.focusedIdx = -1;
+      DP.editMode = false;
+      document.getElementById('new-dir').value = DP.current;
+      dpRender();
+    }
+
+    function dpRender() {
+      const crumb = document.getElementById('dp-breadcrumb');
+      const list = document.getElementById('dp-list');
+      if (!crumb || !list) return;
+
+      if (DP.editMode) {
+        crumb.innerHTML = `<input class="dp-edit-input" id="dp-edit-input" value="${escapeHtml(DP.current)}">`;
+        const inp = document.getElementById('dp-edit-input');
+        inp.focus(); inp.select();
+        inp.addEventListener('keydown', dpEditKeydown);
+        inp.addEventListener('blur', dpExitEditMode);
+      } else {
+        const s = DP.sep;
+        const parts = DP.current.split(s).filter(Boolean);
+        const isWin = s === '\\';
+        let html = '';
+        let acc = '';
+        if (isWin && parts.length) {
+          acc = parts[0] + s;
+          html += `<span class="dp-crumb" onclick="dpNavigate('${escapeHtml(acc)}')">${escapeHtml(parts[0])}</span>`;
+          for (let i = 1; i < parts.length; i++) {
+            acc = dpJoin(acc, parts[i]);
+            const active = i === parts.length - 1 ? 'active' : '';
+            html += `<span class="dp-sep">›</span><span class="dp-crumb ${active}" onclick="dpNavigate('${escapeHtml(acc)}')">${escapeHtml(parts[i])}</span>`;
+          }
+        } else {
+          html += `<span class="dp-crumb" onclick="dpNavigate('/')">/</span>`;
+          acc = '/';
+          for (let i = 0; i < parts.length; i++) {
+            acc = acc === '/' ? '/' + parts[i] : acc + '/' + parts[i];
+            const active = i === parts.length - 1 ? 'active' : '';
+            html += `<span class="dp-sep">›</span><span class="dp-crumb ${active}" onclick="dpNavigate('${escapeHtml(acc)}')">${escapeHtml(parts[i])}</span>`;
+          }
+        }
+        crumb.innerHTML = html;
       }
 
-      const filtered = filter
-        ? cachedEntries.filter(e => e.toLowerCase().startsWith(filter))
-        : cachedEntries;
-
-      const browser = document.getElementById('dir-browser');
-      if (!filtered.length) {
-        browser.innerHTML = '<div class="dir-entry dir-up" onclick="goUpDir()"><span class="dir-icon">..</span> up</div>'
-          + (filter ? '<div class="dir-entry" style="color:#333;cursor:default">no matches</div>' : '<div class="dir-entry" style="color:#333;cursor:default">no subdirectories</div>');
+      if (DP.errorMsg) {
+        list.innerHTML = `<div class="dp-error">⚠ ${escapeHtml(DP.errorMsg)}</div>`;
         return;
       }
-      browser.innerHTML = '<div class="dir-entry dir-up" onclick="goUpDir()"><span class="dir-icon">..</span> up</div>'
-        + filtered.map(e => `<div class="dir-entry" onclick="selectDir('${escapeHtml(parentDir + e)}')"><span class="dir-icon">+</span> ${escapeHtml(e)}</div>`).join('');
+      const canUp = !dpIsRoot(DP.current);
+      const items = [];
+      items.push(`<div class="dp-item up ${canUp ? '' : 'disabled'} ${DP.focusedIdx === 0 ? 'focused' : ''}"
+                       onclick="${canUp ? `dpNavigate('${escapeHtml(dpParent(DP.current))}')` : ''}">
+                     <span class="dp-chevron">..</span>up
+                   </div>`);
+      DP.entries.forEach((name, i) => {
+        const target = dpJoin(DP.current, name);
+        const idx = i + 1;
+        items.push(`<div class="dp-item ${DP.focusedIdx === idx ? 'focused' : ''}"
+                         onclick="dpNavigate('${escapeHtml(target)}')">
+                       <span class="dp-chevron">▸</span>${escapeHtml(name)}
+                     </div>`);
+      });
+      if (DP.entries.length === 0) items.push(`<div class="dp-empty">— empty —</div>`);
+      list.innerHTML = items.join('');
     }
 
-    function selectDir(dir) {
-      const input = document.getElementById('new-dir');
-      input.value = dir + '/';
-      input.focus();
-      browseDir(dir);
+    function dpEnterEditMode(e) {
+      if (e && e.target && e.target.classList.contains('dp-crumb')) return;
+      DP.editMode = true;
+      dpRender();
     }
+    function dpEditKeydown(e) {
+      if (e.key === 'Enter') { e.preventDefault(); dpNavigate(e.target.value.trim()); }
+      else if (e.key === 'Escape') { e.preventDefault(); dpExitEditMode(); }
+    }
+    function dpExitEditMode() { DP.editMode = false; dpRender(); }
 
-    function goUpDir() {
-      const input = document.getElementById('new-dir');
-      let dir = input.value.replace(/\/+$/, '');
-      const parent = dir.substring(0, dir.lastIndexOf('/'));
-      if (parent) {
-        input.value = parent + '/';
-        input.focus();
-        browseDir(parent);
+    function dpOnKeydown(e) {
+      if (DP.editMode) return;
+      const modal = document.getElementById('new-modal');
+      if (!modal || !modal.classList.contains('visible')) return;
+      const total = DP.entries.length + 1;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        DP.focusedIdx = Math.min(DP.focusedIdx + 1, total - 1);
+        dpRender();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        DP.focusedIdx = Math.max(DP.focusedIdx - 1, 0);
+        dpRender();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (DP.focusedIdx === 0 && !dpIsRoot(DP.current)) {
+          dpNavigate(dpParent(DP.current));
+        } else if (DP.focusedIdx > 0) {
+          const name = DP.entries[DP.focusedIdx - 1];
+          dpNavigate(dpJoin(DP.current, name));
+        }
+      } else if (e.key === 'Backspace' && !e.target.closest('input')) {
+        e.preventDefault();
+        if (!dpIsRoot(DP.current)) dpNavigate(dpParent(DP.current));
       }
     }
+    document.addEventListener('keydown', dpOnKeydown);
 
     async function createFolder() {
-      const dirInput = document.getElementById('new-dir');
       const nameInput = document.getElementById('new-folder-name');
       const name = nameInput.value.trim();
       if (!name) { showToast('Enter a folder name'); return; }
-      let parent = dirInput.value.replace(/\/+$/, '');
-      const newPath = parent + '/' + name;
+      const newPath = dpJoin(DP.current, name);
       try {
         const r = await fetch('/api/mkdir', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ path: newPath }) });
         const d = await r.json();
         if (d.ok) {
           nameInput.value = '';
-          selectDir(newPath);
+          dpNavigate(newPath);
           showToast('Created ' + name);
         } else {
           showToast('Failed: ' + (d.error || 'unknown'));
         }
       } catch { showToast('Failed to create folder'); }
     }
-
-    let browseTimeout;
-    document.addEventListener('DOMContentLoaded', () => {
-      const dirInput = document.getElementById('new-dir');
-      if (dirInput) {
-        dirInput.addEventListener('input', () => {
-          clearTimeout(browseTimeout);
-          browseTimeout = setTimeout(() => browseDir(dirInput.value), 300);
-        });
-      }
-    });
 
     function closeNewSession() {
       document.getElementById('new-modal').classList.remove('visible');
