@@ -998,17 +998,27 @@ const server = http.createServer((req, res) => {
     if (AUTO_CLOSE && autoCloseTimer) { clearTimeout(autoCloseTimer); autoCloseTimer = null; }
 
   } else if (url.pathname === '/api/ls') {
-    const dir = url.searchParams.get('dir') || os.homedir();
+    const raw = url.searchParams.get('dir') || '';
+    // Resolve relative / empty paths against homedir so the client never has to
+    // care about absolute vs relative.
+    let resolved;
+    if (!raw) {
+      resolved = os.homedir();
+    } else if (raw.startsWith('/') || /^[A-Za-z]:/.test(raw)) {
+      resolved = raw;
+    } else {
+      resolved = path.join(os.homedir(), raw);
+    }
     try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      const entries = fs.readdirSync(resolved, { withFileTypes: true })
         .filter(e => e.isDirectory() && !e.name.startsWith('.'))
         .map(e => e.name)
         .sort();
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, dir, entries }));
+      res.end(JSON.stringify({ ok: true, dir: resolved, resolved, entries }));
     } catch (e) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, dir, entries: [], error: String(e) }));
+      res.end(JSON.stringify({ ok: false, dir: resolved, resolved, entries: [], error: e.code || String(e) }));
     }
     return;
 
