@@ -765,7 +765,7 @@
               <div class="stat"><div class="stat-val stat-indigo">${mem}</div><div class="stat-key">memory</div></div>
               <div class="stat"><div class="stat-val stat-muted">${elapsed}</div><div class="stat-key">uptime</div></div>
             </div>
-            <button class="btn-focus" type="button">Focus →</button>
+            <button class="btn-focus" data-hidden="${s.hidden ? '1' : '0'}" type="button">${s.hidden ? 'Headless →' : 'Focus →'}</button>
           `;
 
         const card = document.createElement('div');
@@ -1088,7 +1088,11 @@
 
     async function openTerminal(tty, pid, event) {
       event.stopPropagation();
-      try { await fetch('/api/focus?tty=' + encodeURIComponent(tty) + '&pid=' + encodeURIComponent(pid)); } catch {}
+      try {
+        const r = await fetch('/api/focus?tty=' + encodeURIComponent(tty) + '&pid=' + encodeURIComponent(pid));
+        const d = await r.json();
+        if (!d.found) showToast("Couldn't find terminal window");
+      } catch { showToast('Focus failed'); }
     }
 
     function showNewSession(event) {
@@ -1224,6 +1228,11 @@
     /* ── Part D: handleFocus ── */
     function handleFocus(tty, pid, event) {
       if (event) event.stopPropagation();
+      const btn = event && event.target && event.target.closest ? event.target.closest('.btn-focus') : null;
+      if (btn && btn.getAttribute('data-hidden') === '1') {
+        showToast('Session is running headless — use Send to interact');
+        return;
+      }
       openTerminal(tty, pid, event);
     }
 

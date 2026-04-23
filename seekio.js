@@ -229,7 +229,8 @@ const macAdapter = {
     if (!/^\d+$/.test(tty.replace(/^ttys?0*/, ''))) throw new Error('invalid tty');
     const ttyNum = tty.replace(/^ttys?0*/, '');
     const script = `tell application "Terminal"\nactivate\nrepeat with w from 1 to count of windows\nset win to window w\nrepeat with t from 1 to count of tabs of win\nset theTab to tab t of win\nif tty of theTab contains "${ttyNum}" then\nset selected tab of win to theTab\nset index of win to 1\nreturn "found"\nend if\nend repeat\nend repeat\nend tell`;
-    execSync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, { encoding: 'utf8' });
+    const out = execSync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, { encoding: 'utf8' });
+    return { found: String(out || '').includes('found') };
   },
 };
 
@@ -282,11 +283,20 @@ Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
   $wmi = Get-WmiObject Win32_Process -Filter "ProcessId=$($p.Id)" -ErrorAction SilentlyContinue
   $cwd = if ($wmi -and $wmi.WorkingDirectory) { $wmi.WorkingDirectory.TrimEnd('\\') } else { '' }
   if (-not $cwd) { try { $cwd = [SeekioCwd]::Get([int]$p.Id) } catch {} }
+  # Walk the process tree (up to parent and to children) to detect if there's ANY visible window.
+  # This is how we know whether the session is "headless" — dispatched with -WindowStyle Hidden
+  # or its terminal was killed while claude.exe kept running.
+  $hwnd = [int64]$p.MainWindowHandle
+  if ($hwnd -eq 0 -and $wmi -and $wmi.ParentProcessId) {
+    $par = Get-Process -Id ([int]$wmi.ParentProcessId) -ErrorAction SilentlyContinue
+    if ($par) { $hwnd = [int64]$par.MainWindowHandle }
+  }
   [PSCustomObject]@{
     id    = [string]$p.Id
     cwd   = if ($cwd) { $cwd } else { '' }
     memMB = [int]($p.WorkingSet64 / 1MB)
     start = if ($p.StartTime) { $p.StartTime.ToString('o') } else { '' }
+    hasWindow = ($hwnd -ne 0)
   }
 } | ConvertTo-Json -Compress`;
       fs.writeFileSync(ps1, psCode.trim());
@@ -364,6 +374,7 @@ Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
           toolCalls,
           currentTool,
           subAgents,
+          hidden: !p.hasWindow,
         };
       });
     } catch { return []; }
@@ -470,7 +481,15 @@ function Find-Window {
     }
     $wmi = Get-WmiObject Win32_Process -Filter "ProcessId=$wpid" -ErrorAction SilentlyContinue
     if ($wmi -and $wmi.ParentProcessId -and [int]$wmi.ParentProcessId -gt 0 -and [int]$wmi.ParentProcessId -ne $wpid) {
-      return Find-Window -wpid ([int]$wmi.ParentProcessId) -depth ($depth + 1)
+      $h = Find-Window -wpid ([int]$wmi.ParentProcessId) -depth ($depth + 1)
+      if ($h -ne 0) { return $h }
+    }
+    $children = Get-WmiObject Win32_Process -Filter "ParentProcessId=$wpid" -ErrorAction SilentlyContinue
+    if ($children) {
+      foreach ($c in @($children)) {
+        $h = Find-Window -wpid ([int]$c.ProcessId) -depth ($depth + 1)
+        if ($h -ne 0) { return $h }
+      }
     }
   } catch {}
   return [int64]0
@@ -478,13 +497,17 @@ function Find-Window {
 $hwnd = Find-Window -wpid ${pid}
 if ($hwnd -ne $null -and $hwnd -gt 0) {
   try {
-    [SeekioFocus]::ShowWindow([IntPtr]$hwnd, 9)
+    [SeekioFocus]::ShowWindow([IntPtr]$hwnd, 5)
     [SeekioFocus]::SetForegroundWindow([IntPtr]$hwnd)
-  } catch {}
+    Write-Output "FOUND"
+  } catch { Write-Output "ERR" }
+} else {
+  Write-Output "NONE"
 }
 `.trim());
     try {
-      execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${ps1}"`, { encoding: 'utf8', timeout: 5000 });
+      const out = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${ps1}"`, { encoding: 'utf8', timeout: 5000 }).trim();
+      return { found: out.includes('FOUND') };
     } finally {
       try { fs.unlinkSync(ps1); } catch {}
     }
@@ -1064,9 +1087,10 @@ const server = http.createServer((req, res) => {
   } else if (url.pathname === '/api/focus') {
     const tty = url.searchParams.get('tty') || '';
     const pid = url.searchParams.get('pid') || '';
-    try { platform.focus(tty, pid); } catch {}
+    let result = { found: false };
+    try { result = platform.focus(tty, pid) || { found: false }; } catch {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
+    res.end(JSON.stringify({ ok: true, ...result }));
 
   } else {
     res.writeHead(200, { 'Content-Type': 'text/html' });
