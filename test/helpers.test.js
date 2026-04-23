@@ -172,3 +172,73 @@ test('parseToolCalls calculates durationMs', () => {
   const read = tcs.find(t => t.id === 'toolu_001');
   assert.equal(read.durationMs, 400);
 });
+
+// --- formatTimestamp (duplicated from public/index.html) ---
+function formatTimestamp(iso, now = Date.now()) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const diffMs = now - t;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const d = new Date(t);
+  const pad = n => String(n).padStart(2, '0');
+  const display = `${months[d.getMonth()]} ${d.getDate()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  let tooltip;
+  if (diffMs < 3000) tooltip = 'just now';
+  else if (diffMs < 60_000) tooltip = `${Math.floor(diffMs / 1000)}s ago`;
+  else if (diffMs < 3_600_000) tooltip = `${Math.floor(diffMs / 60_000)}m ago`;
+  else if (diffMs < 86_400_000) tooltip = `${Math.floor(diffMs / 3_600_000)}h ago`;
+  else tooltip = display;
+  return { display, tooltip };
+}
+
+test('formatTimestamp: null for empty/invalid', () => {
+  assert.equal(formatTimestamp(''), null);
+  assert.equal(formatTimestamp(null), null);
+  assert.equal(formatTimestamp('garbage'), null);
+});
+
+test('formatTimestamp: under 3 seconds shows just now', () => {
+  const now = Date.parse('2026-04-22T14:32:08.000Z');
+  const iso = '2026-04-22T14:32:07.000Z'; // 1s ago
+  assert.equal(formatTimestamp(iso, now).tooltip, 'just now');
+});
+
+test('formatTimestamp: under 1 minute shows seconds', () => {
+  const now = Date.parse('2026-04-22T14:32:08.000Z');
+  const iso = '2026-04-22T14:31:23.000Z'; // 45s ago
+  assert.equal(formatTimestamp(iso, now).tooltip, '45s ago');
+});
+
+test('formatTimestamp: under 1 hour shows minutes', () => {
+  const now = Date.parse('2026-04-22T14:32:08.000Z');
+  const iso = '2026-04-22T14:27:08.000Z'; // 5m ago
+  assert.equal(formatTimestamp(iso, now).tooltip, '5m ago');
+});
+
+test('formatTimestamp: under 24 hours shows hours', () => {
+  const now = Date.parse('2026-04-22T14:32:08.000Z');
+  const iso = '2026-04-22T11:32:08.000Z'; // 3h ago
+  assert.equal(formatTimestamp(iso, now).tooltip, '3h ago');
+});
+
+test('formatTimestamp: 24+ hours falls back to absolute display', () => {
+  const now = Date.parse('2026-04-22T14:32:08.000Z');
+  const iso = '2026-04-20T09:14:00.000Z'; // 2 days ago
+  const r = formatTimestamp(iso, now);
+  assert.equal(r.tooltip, r.display); // falls back to display
+});
+
+test('formatTimestamp: display format is MMM D · HH:mm', () => {
+  const now = Date.parse('2026-04-22T14:32:08.000Z');
+  const localDate = new Date(2026, 3, 22, 14, 32, 8); // April 22, 2026, 14:32 local
+  const iso = localDate.toISOString();
+  const r = formatTimestamp(iso, now);
+  assert.equal(r.display, 'Apr 22 · 14:32');
+});
+
+test('formatTimestamp: future timestamps say just now', () => {
+  const now = Date.parse('2026-04-22T14:32:08.000Z');
+  const iso = '2026-04-22T14:35:00.000Z'; // 3 minutes in the future
+  assert.equal(formatTimestamp(iso, now).tooltip, 'just now');
+});

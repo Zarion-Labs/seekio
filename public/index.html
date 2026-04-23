@@ -443,6 +443,16 @@
   .drawer-body::-webkit-scrollbar { width: 4px; }
   .drawer-body::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 
+  /* Timestamps */
+  .ts {
+    font-size: 10px;
+    color: #5a5a6a;
+    margin-left: 8px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .ts[title]:hover { color: #8a8a9a; cursor: help; }
+
   .tool-group-divider {
     font-size: 9px;
     color: #555;
@@ -689,6 +699,32 @@
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }
+
+    // Returns { display, tooltip } or null if iso is missing/unparseable.
+    function formatTimestamp(iso, now = Date.now()) {
+      if (!iso) return null;
+      const t = Date.parse(iso);
+      if (Number.isNaN(t)) return null;
+      const diffMs = now - t;
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const d = new Date(t);
+      const pad = n => String(n).padStart(2, '0');
+      const display = `${months[d.getMonth()]} ${d.getDate()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      let tooltip;
+      if (diffMs < 3000) tooltip = 'just now';
+      else if (diffMs < 60_000) tooltip = `${Math.floor(diffMs / 1000)}s ago`;
+      else if (diffMs < 3_600_000) tooltip = `${Math.floor(diffMs / 60_000)}m ago`;
+      else if (diffMs < 86_400_000) tooltip = `${Math.floor(diffMs / 3_600_000)}h ago`;
+      else tooltip = display;
+      return { display, tooltip };
+    }
+
+    // Render a timestamp span. Returns HTML string. Uses escapeHtml.
+    function tsSpan(iso) {
+      const f = formatTimestamp(iso);
+      if (!f) return '';
+      return `<span class="ts" title="${escapeHtml(f.tooltip)}">${escapeHtml(f.display)}</span>`;
     }
 
     function fmtMem(mem) {
