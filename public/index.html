@@ -368,13 +368,78 @@
   }
   .dir-browser::-webkit-scrollbar { width: 4px; }
   .dir-browser::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
-  .dir-entry {
-    padding: 6px 10px; font-size: 11px; color: #888; cursor: pointer;
-    display: flex; align-items: center; gap: 6px; transition: background 0.1s;
+
+  /* ── Directory picker (DP) ── */
+  .dp-breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    background: #0a0a12;
+    border: 1px solid #222;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    color: #8a8a9a;
+    cursor: text;
+    min-height: 32px;
   }
-  .dir-entry:hover { background: #1a1a2e; color: #cc7832; }
-  .dir-icon { color: #555; font-size: 10px; }
-  .dir-up { color: #666; font-style: italic; }
+  .dp-crumb {
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    color: #8a8a9a;
+    user-select: none;
+  }
+  .dp-crumb:hover { background: #1a1a2e; color: #d4d4d4; }
+  .dp-crumb.active { color: #27c93f; font-weight: 600; cursor: default; }
+  .dp-crumb.active:hover { background: transparent; }
+  .dp-sep { color: #444; font-size: 10px; }
+  .dp-edit-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #d4d4d4;
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  .dp-list {
+    margin-top: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #0a0a12;
+    border: 1px solid #222;
+    border-radius: 4px;
+  }
+  .dp-list::-webkit-scrollbar { width: 4px; }
+  .dp-list::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+  .dp-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    color: #b4b4c4;
+    cursor: pointer;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    border-left: 2px solid transparent;
+  }
+  .dp-item:hover { background: #16162a; }
+  .dp-item.focused { background: #1a1a35; border-left-color: #27c93f; }
+  .dp-item.up { color: #8a8a9a; }
+  .dp-item.disabled { opacity: 0.3; cursor: not-allowed; }
+  .dp-chevron { color: #555; margin-right: 8px; width: 10px; display: inline-block; }
+  .dp-empty, .dp-error {
+    padding: 10px;
+    color: #666;
+    font-style: italic;
+    font-size: 12px;
+    text-align: center;
+  }
+  .dp-error { color: #e94560; }
   .modal-check {
     display: flex; align-items: center; gap: 8px; margin-top: 4px;
   }
@@ -442,6 +507,95 @@
   }
   .drawer-body::-webkit-scrollbar { width: 4px; }
   .drawer-body::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+  /* Timestamps */
+  .ts {
+    font-size: 10px;
+    color: #5a5a6a;
+    margin-left: 8px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .ts[title]:hover { color: #8a8a9a; cursor: help; }
+
+  /* ── Terminal tab ── */
+  .term-body {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: #0d0d14;
+    color: #d4d4d4;
+    padding: 12px;
+    position: relative;
+    height: 100%;
+    overflow-y: auto;
+  }
+  .term-entry {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    animation: termFadeIn 0.2s ease-out;
+  }
+  @keyframes termFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .term-entry .term-main { flex: 1; min-width: 0; word-break: break-word; }
+  .term-user .term-main::before { content: '> '; color: #27c93f; }
+  .term-user .term-main { color: #fff; border-top: 1px dashed #1f1f2f; padding-top: 6px; margin-top: 4px; }
+  .term-assistant .term-main { color: #c8c8d0; white-space: pre-wrap; }
+  .term-tool_call .term-main { color: #b4b4c4; font-size: 11px; }
+  .term-tool_call .tc-header { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .term-tool_call .tc-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .term-tool_call .tc-dot.complete { background: #27c93f; }
+  .term-tool_call .tc-dot.running { background: #ffbd2e; animation: termPulse 1.2s infinite; }
+  .term-tool_call .tc-dot.error { background: #e94560; }
+  @keyframes termPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .term-tool_call .tc-icon { color: #27c93f; }
+  .term-tool_call .tc-preview { color: #8a8a9a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .term-tool_call pre {
+    margin: 4px 0 0 16px;
+    padding: 6px 8px;
+    background: #080810;
+    border: 1px solid #1a1a2a;
+    border-radius: 3px;
+    color: #8a8a9a;
+    font-size: 10px;
+    max-height: 200px;
+    overflow: auto;
+    white-space: pre-wrap;
+  }
+  .term-tool_result .term-main {
+    color: #8a8a9a;
+    font-size: 10px;
+    margin-left: 16px;
+    max-height: 160px;
+    overflow: hidden;
+    white-space: pre-wrap;
+  }
+  .term-tool_result.error .term-main { color: #e94560; }
+  .term-thinking .term-main { color: #6a6a8a; font-style: italic; }
+  .term-empty {
+    padding: 24px;
+    text-align: center;
+    color: #555;
+    font-style: italic;
+  }
+  .term-newchip {
+    position: sticky;
+    bottom: 8px;
+    background: #27c93f;
+    color: #000;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    display: none;
+    margin: 8px auto 0;
+  }
+  .term-body.has-new .term-newchip { display: block; }
 
   .tool-group-divider {
     font-size: 9px;
@@ -511,6 +665,35 @@
   }
   .tool-entry-expanded.visible { display: block; }
   .tool-entry-exp-label { color: #444; margin-bottom: 2px; }
+
+  /* Mailbox groups (dedupe) */
+  .mb-group { margin-bottom: 6px; }
+  .mb-group.multi {
+    border: 1px solid #1a1a2a;
+    border-radius: 4px;
+    padding: 4px;
+    background: #08080f;
+  }
+  .mb-group-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .mb-group-header:hover { background: #111122; }
+  .mb-group-badge {
+    display: inline-block;
+    background: #1a1a35;
+    color: #8a8a9a;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    margin-left: 6px;
+  }
+  .mb-group.multi > .mail-thread { margin-left: 14px; }
 
   .mail-thread {
     background: #0a0a1a;
@@ -626,7 +809,8 @@
   <div id="tool-drawer">
       <div class="drawer-handle" aria-hidden="true"></div>
       <div class="drawer-tabs">
-        <button class="drawer-tab active" id="drawer-tab-tools" onclick="switchDrawerTab('tools')">⚙ TOOLS <span class="drawer-badge" id="drawer-badge-tools">0</span></button>
+        <button class="drawer-tab active" id="drawer-tab-terminal" onclick="switchDrawerTab('terminal')">▶ TERMINAL</button>
+        <button class="drawer-tab inactive" id="drawer-tab-tools" onclick="switchDrawerTab('tools')">⚙ TOOLS <span class="drawer-badge" id="drawer-badge-tools">0</span></button>
         <button class="drawer-tab inactive" id="drawer-tab-mailbox" onclick="switchDrawerTab('mailbox')">✉ MAILBOX <span class="drawer-badge" id="drawer-badge-mailbox">0</span></button>
       </div>
       <div class="drawer-body" id="drawer-body"></div>
@@ -637,8 +821,11 @@
       <h2>New Claude Session</h2>
       <div class="modal-field">
         <label>Project directory</label>
-        <input class="modal-input" id="new-dir" value="/">
-        <div class="dir-browser" id="dir-browser"></div>
+        <div id="dp-root">
+          <div class="dp-breadcrumb" id="dp-breadcrumb" onclick="dpEnterEditMode(event)"></div>
+          <div class="dp-list" id="dp-list" tabindex="0"></div>
+        </div>
+        <input type="hidden" id="new-dir" value="">
         <div style="margin-top:6px;display:flex;gap:6px">
           <input class="modal-input" id="new-folder-name" placeholder="new folder name" style="font-size:11px;padding:6px 8px">
           <button class="btn btn-send" onclick="createFolder()" style="padding:6px 10px;font-size:9px">create</button>
@@ -663,7 +850,7 @@
     /* ── State Variables ── */
     let lastData = null;
     let drawerPid = null;
-    let activeDrawerTab = 'tools';
+    let activeDrawerTab = 'terminal';
     let animFrame = 0;
     let lastTickTs = 0;
     const activeBusyNotices = new Map();
@@ -689,6 +876,32 @@
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }
+
+    // Returns { display, tooltip } or null if iso is missing/unparseable.
+    function formatTimestamp(iso, now = Date.now()) {
+      if (!iso) return null;
+      const t = Date.parse(iso);
+      if (Number.isNaN(t)) return null;
+      const diffMs = now - t;
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const d = new Date(t);
+      const pad = n => String(n).padStart(2, '0');
+      const display = `${months[d.getMonth()]} ${d.getDate()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      let tooltip;
+      if (diffMs < 3000) tooltip = 'just now';
+      else if (diffMs < 60_000) tooltip = `${Math.floor(diffMs / 1000)}s ago`;
+      else if (diffMs < 3_600_000) tooltip = `${Math.floor(diffMs / 60_000)}m ago`;
+      else if (diffMs < 86_400_000) tooltip = `${Math.floor(diffMs / 3_600_000)}h ago`;
+      else tooltip = display;
+      return { display, tooltip };
+    }
+
+    // Render a timestamp span. Returns HTML string. Uses escapeHtml.
+    function tsSpan(iso) {
+      const f = formatTimestamp(iso);
+      if (!f) return '';
+      return `<span class="ts" title="${escapeHtml(f.tooltip)}">${escapeHtml(f.display)}</span>`;
     }
 
     function fmtMem(mem) {
@@ -729,7 +942,7 @@
               <div class="stat"><div class="stat-val stat-indigo">${mem}</div><div class="stat-key">memory</div></div>
               <div class="stat"><div class="stat-val stat-muted">${elapsed}</div><div class="stat-key">uptime</div></div>
             </div>
-            <button class="btn-focus" type="button">Focus →</button>
+            <button class="btn-focus" data-hidden="${s.hidden ? '1' : '0'}" type="button">${s.hidden ? 'Headless →' : 'Focus →'}</button>
           `;
 
         const card = document.createElement('div');
@@ -809,8 +1022,10 @@
 
     function switchDrawerTab(tab) {
       activeDrawerTab = tab;
-      document.getElementById('drawer-tab-tools').className = 'drawer-tab ' + (tab === 'tools' ? 'active' : 'inactive');
-      document.getElementById('drawer-tab-mailbox').className = 'drawer-tab ' + (tab === 'mailbox' ? 'active' : 'inactive');
+      for (const t of ['terminal', 'tools', 'mailbox']) {
+        const el = document.getElementById('drawer-tab-' + t);
+        if (el) el.className = 'drawer-tab ' + (tab === t ? 'active' : 'inactive');
+      }
       renderDrawer();
     }
 
@@ -837,7 +1052,10 @@
         if (toolId) toolScrolls[toolId] = el.scrollTop;
       });
 
-      if (activeDrawerTab === 'tools') {
+      if (activeDrawerTab === 'terminal') {
+        body.innerHTML = renderTerminalTab(session);
+        termAfterRender(session);
+      } else if (activeDrawerTab === 'tools') {
         body.innerHTML = renderToolsTab(session);
       } else {
         body.innerHTML = renderMailboxTab(session);
@@ -919,6 +1137,7 @@
             <span class="tool-entry-name">${escapeHtml(tc.name)}</span>
             ${statusEl}
             <span class="tool-entry-dur">${escapeHtml(dur)}</span>
+            ${tsSpan(tc.timestamp)}
             ${arrow}
           </div>
           ${tc.keyArg ? `<div class="tool-entry-arg">${escapeHtml(tc.keyArg)}</div>` : ''}
@@ -934,6 +1153,95 @@
       renderDrawer();
     }
 
+    /* ── Terminal tab ── */
+    const termLastCount = new Map();   // pid -> last rendered timeline length
+    const termScrollState = new Map(); // pid -> { pinned, hasNew }
+
+    function renderTerminalTab(session) {
+      const t = session.timeline || [];
+      if (!t.length) return '<div class="term-empty">— no messages yet —</div>';
+      const entries = t.map((e, i) => renderTerminalEntry(e, i)).join('');
+      return `<div class="term-body" id="term-body-${session.pid}"
+                   onscroll="termOnScroll(event, ${session.pid})">
+                ${entries}
+                <button class="term-newchip" onclick="termScrollToBottom(${session.pid})">↓ new messages</button>
+              </div>`;
+    }
+
+    function renderTerminalEntry(e) {
+      const ts = tsSpan(e.timestamp);
+      const cls = 'term-entry term-' + e.type;
+      if (e.type === 'user' || e.type === 'assistant' || e.type === 'thinking') {
+        return `<div class="${cls}"><div class="term-main">${escapeHtml(e.text || '')}</div>${ts}</div>`;
+      }
+      if (e.type === 'tool_call') {
+        const preview = typeof e.input === 'object'
+          ? escapeHtml(JSON.stringify(e.input).slice(0, 120))
+          : escapeHtml(String(e.input || '').slice(0, 120));
+        const statusClass = e.status === 'running' ? 'running' : (e.status === 'error' ? 'error' : 'complete');
+        const inputJson = escapeHtml(JSON.stringify(e.input, null, 2));
+        return `<div class="${cls}" data-tc-id="${escapeHtml(e.toolId || '')}">
+                  <div class="term-main">
+                    <div class="tc-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                      <span class="tc-dot ${statusClass}"></span>
+                      <span class="tc-icon">🔧</span>
+                      <span>${escapeHtml(e.toolName || 'unknown')}</span>
+                      <span class="tc-preview">· ${preview}</span>
+                    </div>
+                    <pre style="display:none">${inputJson}</pre>
+                  </div>
+                  ${ts}
+                </div>`;
+      }
+      if (e.type === 'tool_result') {
+        const errCls = e.isError ? ' error' : '';
+        return `<div class="${cls}${errCls}">
+                  <div class="term-main">${escapeHtml(e.output || '')}</div>
+                  ${ts}
+                </div>`;
+      }
+      return '';
+    }
+
+    function termOnScroll(event, pid) {
+      const el = event.target;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
+      const state = termScrollState.get(pid) || { pinned: true, hasNew: false };
+      state.pinned = atBottom;
+      if (atBottom) {
+        state.hasNew = false;
+        el.classList.remove('has-new');
+      }
+      termScrollState.set(pid, state);
+    }
+
+    function termScrollToBottom(pid) {
+      const el = document.getElementById('term-body-' + pid);
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+      const state = { pinned: true, hasNew: false };
+      el.classList.remove('has-new');
+      termScrollState.set(pid, state);
+    }
+
+    function termAfterRender(session) {
+      if (activeDrawerTab !== 'terminal') return;
+      const pid = session.pid;
+      const el = document.getElementById('term-body-' + pid);
+      if (!el) return;
+      const state = termScrollState.get(pid) || { pinned: true, hasNew: false };
+      const prevCount = termLastCount.get(pid) || 0;
+      const newCount = (session.timeline || []).length;
+      if (state.pinned) {
+        el.scrollTop = el.scrollHeight;
+      } else if (newCount > prevCount) {
+        state.hasNew = true;
+        el.classList.add('has-new');
+      }
+      termLastCount.set(pid, newCount);
+      termScrollState.set(pid, state);
+    }
+
     function renderMailboxTab(session) {
       const agents = session.subAgents || [];
       if (!agents.length) {
@@ -941,64 +1249,123 @@
       }
 
       const isActive = a => a.status === 'working' || a.status === 'thinking';
-      const sorted = [...agents].sort((a, b) => isActive(a) === isActive(b) ? 0 : isActive(a) ? -1 : 1);
 
-      return sorted.map(agent => {
-        const isOpen = expandedThreads.has(agent.agentId);
-        const messages = agent.messages || [];
-        const dotColor = agent.status === 'working' ? '#27c93f' : agent.status === 'thinking' ? '#ffbd2e' : '#555';
-        const lastMsg = messages.length ? messages[messages.length - 1] : null;
-        const prevCount = prevSubAgentMsgCounts[agent.agentId] || 0;
-        const isNew = messages.length > prevCount;
-        prevSubAgentMsgCounts[agent.agentId] = messages.length;
-        const userNick = agentNicknames[agent.agentId];
-        const displayName = userNick || agent.name;
-        const originLabel = userNick ? '✎ renamed' : agent.nameOrigin === 'renamed' ? '✓ dispatched' : 'generated';
+      // Build groups keyed by display name (nickname > name > agentId fallback).
+      // Multiple dispatches of the same role/name collapse into one group row
+      // with a ×N badge; click the group to see all members.
+      const withKey = agents.map(a => {
+        const nick = agentNicknames[a.agentId];
+        const key = nick || a.name || a.agentId;
+        return { ...a, _groupKey: key, _displayName: nick || a.name };
+      });
+      const groups = new Map();
+      for (const a of withKey) {
+        if (!groups.has(a._groupKey)) groups.set(a._groupKey, []);
+        groups.get(a._groupKey).push(a);
+      }
+      const sorted = [...groups.entries()].map(([key, members]) => {
+        members.sort((x, y) => (y.lastModifiedMs || 0) - (x.lastModifiedMs || 0));
+        return { key, members, latest: members[0], active: members.some(isActive) };
+      }).sort((a, b) => {
+        if (a.active !== b.active) return a.active ? -1 : 1;
+        return (b.latest.lastModifiedMs || 0) - (a.latest.lastModifiedMs || 0);
+      });
 
-        let bodyHtml = '';
-        if (isOpen) {
-          let convHtml = '';
-          for (const msg of messages) {
-            const roleLabel = msg.role === 'user' ? 'Lead →' : `← ${escapeHtml(displayName)}`;
-            const roleClass = msg.role === 'user' ? 'lead' : 'agent';
-            convHtml += `
-              <div class="mail-conv-msg">
-                <div class="mail-conv-role ${roleClass}">${roleLabel}</div>
-                <div class="mail-conv-text">${escapeHtml(msg.text)}</div>
-              </div>`;
-          }
-          if (agent.toolCalls && agent.toolCalls.length) {
-            const chips = agent.toolCalls.map(tc =>
-              `<span class="mail-tool-chip ${tc.status}">${escapeHtml(tc.name)} ${tc.status === 'done' ? '✓' : tc.status === 'error' ? '✗' : '⟳'}</span>`
-            ).join('');
-            convHtml += `<div class="mail-conv-msg"><div class="mail-conv-tools">${chips}</div></div>`;
-          }
-          bodyHtml = `
-            <div class="mail-thread-body open">${convHtml}</div>
-            <div class="mail-readonly">👁 read-only</div>`;
+      return sorted.map(g => renderAgentGroup(g)).join('');
+    }
+
+    function renderAgentGroup(g) {
+      const count = g.members.length;
+      const expanded = count === 1 || mailboxGroupExpanded.has(g.key);
+      const latest = g.latest;
+      const dotColor = latest.status === 'working' ? '#27c93f' : latest.status === 'thinking' ? '#ffbd2e' : '#555';
+      const roleColor = agentRoleColor(g.key) || '';
+      const headerTs = tsSpan(new Date(latest.lastModifiedMs).toISOString());
+      const badge = count > 1 ? `<span class="mb-group-badge">×${count}</span>` : '';
+      const chev = count > 1 ? (expanded ? '▾' : '▸') : '';
+
+      const header = count > 1 ? `
+        <div class="mb-group-header" onclick="toggleMailboxGroup('${escapeHtml(g.key).replace(/'/g, "\\'")}',event)">
+          <span class="mail-thread-dots">
+            <span class="mail-thread-dot" style="background:${dotColor}"></span>
+            ${roleColor ? `<span class="mail-thread-role-dot" style="background:${roleColor}"></span>` : ''}
+          </span>
+          <div class="mail-thread-info">
+            <div class="mail-thread-name">${escapeHtml(g.key)} ${badge}</div>
+          </div>
+          ${headerTs}
+          <span class="mail-thread-arrow">${chev}</span>
+        </div>` : '';
+
+      const body = expanded ? g.members.map(agent => renderAgentThread(agent)).join('') : '';
+      return `<div class="mb-group ${count > 1 ? 'multi' : ''}">${header}${body}</div>`;
+    }
+
+    function renderAgentThread(agent) {
+      const isOpen = expandedThreads.has(agent.agentId);
+      const messages = agent.messages || [];
+      const dotColor = agent.status === 'working' ? '#27c93f' : agent.status === 'thinking' ? '#ffbd2e' : '#555';
+      const lastMsg = messages.length ? messages[messages.length - 1] : null;
+      const prevCount = prevSubAgentMsgCounts[agent.agentId] || 0;
+      const isNew = messages.length > prevCount;
+      prevSubAgentMsgCounts[agent.agentId] = messages.length;
+      const userNick = agentNicknames[agent.agentId];
+      const displayName = userNick || agent.name;
+      const originLabel = userNick ? '✎ renamed' : agent.nameOrigin === 'renamed' ? '✓ dispatched' : 'generated';
+      const headerTs = tsSpan(new Date(agent.lastModifiedMs).toISOString());
+
+      let bodyHtml = '';
+      if (isOpen) {
+        let convHtml = '';
+        for (const msg of messages) {
+          const roleLabel = msg.role === 'user' ? 'Lead →' : `← ${escapeHtml(displayName)}`;
+          const roleClass = msg.role === 'user' ? 'lead' : 'agent';
+          convHtml += `
+            <div class="mail-conv-msg">
+              <div class="mail-conv-role ${roleClass}">${roleLabel} ${tsSpan(msg.timestamp)}</div>
+              <div class="mail-conv-text">${escapeHtml(msg.text)}</div>
+            </div>`;
         }
+        if (agent.toolCalls && agent.toolCalls.length) {
+          const chips = agent.toolCalls.map(tc =>
+            `<span class="mail-tool-chip ${tc.status}" title="${escapeHtml((tc.timestamp || ''))}">${escapeHtml(tc.name)} ${tc.status === 'done' ? '✓' : tc.status === 'error' ? '✗' : '⟳'}</span>`
+          ).join('');
+          convHtml += `<div class="mail-conv-msg"><div class="mail-conv-tools">${chips}</div></div>`;
+        }
+        bodyHtml = `
+          <div class="mail-thread-body open">${convHtml}</div>
+          <div class="mail-readonly">👁 read-only</div>`;
+      }
 
-        return `
-          <div class="mail-thread ${isNew ? 'mail-thread-flash' : ''}" id="thread-${escapeHtml(agent.agentId)}">
-            <div class="mail-thread-header" onclick="toggleThread('${escapeHtml(agent.agentId)}',event)">
-              <span class="mail-thread-dots">
-                <span class="mail-thread-dot" style="background:${dotColor}"></span>
-                ${agentRoleColor(displayName) ? `<span class="mail-thread-role-dot" style="background:${agentRoleColor(displayName)}"></span>` : ''}
-              </span>
-              <div class="mail-thread-info">
-                <div class="mail-thread-name" id="agent-name-${escapeHtml(agent.agentId)}" data-generated="${escapeHtml(agent.name)}">
-                  ${escapeHtml(displayName)}
-                  <span class="mail-thread-origin">${originLabel}</span>
-                  <button class="mail-thread-rename-btn" title="Rename" onclick="startRenameAgent('${escapeHtml(agent.agentId)}',event)">✎</button>
-                </div>
-                ${lastMsg ? `<div class="mail-thread-preview">${escapeHtml(lastMsg.text.slice(0, 50))}</div>` : ''}
+      return `
+        <div class="mail-thread ${isNew ? 'mail-thread-flash' : ''}" id="thread-${escapeHtml(agent.agentId)}">
+          <div class="mail-thread-header" onclick="toggleThread('${escapeHtml(agent.agentId)}',event)">
+            <span class="mail-thread-dots">
+              <span class="mail-thread-dot" style="background:${dotColor}"></span>
+              ${agentRoleColor(displayName) ? `<span class="mail-thread-role-dot" style="background:${agentRoleColor(displayName)}"></span>` : ''}
+            </span>
+            <div class="mail-thread-info">
+              <div class="mail-thread-name" id="agent-name-${escapeHtml(agent.agentId)}" data-generated="${escapeHtml(agent.name)}">
+                ${escapeHtml(displayName)}
+                <span class="mail-thread-origin">${originLabel}</span>
+                <button class="mail-thread-rename-btn" title="Rename" onclick="startRenameAgent('${escapeHtml(agent.agentId)}',event)">✎</button>
               </div>
-              <div class="mail-thread-meta">${messages.length} msgs</div>
-              <span class="mail-thread-arrow">${isOpen ? '▾' : '▸'}</span>
+              ${lastMsg ? `<div class="mail-thread-preview">${escapeHtml(lastMsg.text.slice(0, 50))}</div>` : ''}
             </div>
-            ${bodyHtml}
-          </div>`;
-      }).join('');
+            <div class="mail-thread-meta">${messages.length} msgs</div>
+            ${headerTs}
+            <span class="mail-thread-arrow">${isOpen ? '▾' : '▸'}</span>
+          </div>
+          ${bodyHtml}
+        </div>`;
+    }
+
+    const mailboxGroupExpanded = new Set();
+    function toggleMailboxGroup(key, event) {
+      event.stopPropagation();
+      if (mailboxGroupExpanded.has(key)) mailboxGroupExpanded.delete(key);
+      else mailboxGroupExpanded.add(key);
+      renderDrawer();
     }
 
     function toggleThread(agentId, event) {
@@ -1052,97 +1419,208 @@
 
     async function openTerminal(tty, pid, event) {
       event.stopPropagation();
-      try { await fetch('/api/focus?tty=' + encodeURIComponent(tty) + '&pid=' + encodeURIComponent(pid)); } catch {}
+      try {
+        const r = await fetch('/api/focus?tty=' + encodeURIComponent(tty) + '&pid=' + encodeURIComponent(pid));
+        const d = await r.json();
+        if (!d.found) showToast("Couldn't find terminal window");
+      } catch { showToast('Focus failed'); }
     }
 
     function showNewSession(event) {
       event.stopPropagation();
       document.getElementById('new-modal').classList.add('visible');
-      const dirInput = document.getElementById('new-dir');
-      dirInput.focus();
-      dirInput.setSelectionRange(dirInput.value.length, dirInput.value.length);
-      browseDir(dirInput.value);
+      dpInit();
     }
 
-    let cachedDir = '';
-    let cachedEntries = [];
+    /* ── DirectoryPicker ── */
+    const DP = {
+      sep: '/',
+      homedir: '',
+      current: '',
+      entries: [],
+      focusedIdx: -1,
+      editMode: false,
+      errorMsg: null,
+    };
 
-    async function browseDir(inputVal) {
-      const lastSlash = inputVal.lastIndexOf('/');
-      const parentDir = inputVal.substring(0, lastSlash + 1);
-      const filter = inputVal.substring(lastSlash + 1).toLowerCase();
+    function dpDetectSep(p) {
+      return /^[A-Za-z]:/.test(p) ? '\\' : '/';
+    }
+    function dpIsRoot(p) {
+      if (DP.sep === '\\') return /^[A-Za-z]:\\?$/.test(p);
+      return p === '/';
+    }
+    function dpParent(p) {
+      const s = DP.sep;
+      const trimmed = p.replace(new RegExp('\\' + s + '+$'), '');
+      if (dpIsRoot(p) || dpIsRoot(trimmed)) return p;
+      const idx = trimmed.lastIndexOf(s);
+      if (idx <= 0) return s === '\\' ? (trimmed.slice(0, 2) + '\\') : '/';
+      if (s === '\\' && idx === 2) return trimmed.slice(0, 3);
+      return trimmed.slice(0, idx);
+    }
+    function dpJoin(parent, name) {
+      const s = DP.sep;
+      if (parent.endsWith(s)) return parent + name;
+      return parent + s + name;
+    }
 
-      if (parentDir !== cachedDir) {
-        try {
-          const r = await fetch('/api/ls?dir=' + encodeURIComponent(parentDir));
-          const d = await r.json();
-          cachedDir = parentDir;
-          cachedEntries = d.ok ? d.entries : [];
-        } catch { cachedEntries = []; }
+    async function dpInit() {
+      try {
+        const r = await fetch('/api/ls?dir=');
+        const d = await r.json();
+        if (d.resolved) {
+          DP.homedir = d.resolved;
+          DP.sep = dpDetectSep(d.resolved);
+          DP.current = d.resolved;
+          DP.entries = d.ok ? d.entries : [];
+          DP.errorMsg = d.ok ? null : d.error;
+        }
+      } catch {
+        DP.errorMsg = 'Failed to load';
+      }
+      document.getElementById('new-dir').value = DP.current;
+      dpRender();
+    }
+
+    async function dpNavigate(target) {
+      try {
+        const r = await fetch('/api/ls?dir=' + encodeURIComponent(target));
+        const d = await r.json();
+        if (d.ok) {
+          DP.current = d.resolved || target;
+          DP.entries = d.entries;
+          DP.errorMsg = null;
+        } else {
+          DP.errorMsg = d.error || 'unknown error';
+          DP.entries = [];
+          DP.current = target;
+        }
+      } catch {
+        DP.errorMsg = 'network';
+        DP.entries = [];
+      }
+      DP.focusedIdx = -1;
+      DP.editMode = false;
+      document.getElementById('new-dir').value = DP.current;
+      dpRender();
+    }
+
+    function dpRender() {
+      const crumb = document.getElementById('dp-breadcrumb');
+      const list = document.getElementById('dp-list');
+      if (!crumb || !list) return;
+
+      if (DP.editMode) {
+        crumb.innerHTML = `<input class="dp-edit-input" id="dp-edit-input" value="${escapeHtml(DP.current)}">`;
+        const inp = document.getElementById('dp-edit-input');
+        inp.focus(); inp.select();
+        inp.addEventListener('keydown', dpEditKeydown);
+        inp.addEventListener('blur', dpExitEditMode);
+      } else {
+        const s = DP.sep;
+        const parts = DP.current.split(s).filter(Boolean);
+        const isWin = s === '\\';
+        let html = '';
+        let acc = '';
+        if (isWin && parts.length) {
+          acc = parts[0] + s;
+          html += `<span class="dp-crumb" onclick="dpNavigate('${escapeHtml(acc)}')">${escapeHtml(parts[0])}</span>`;
+          for (let i = 1; i < parts.length; i++) {
+            acc = dpJoin(acc, parts[i]);
+            const active = i === parts.length - 1 ? 'active' : '';
+            html += `<span class="dp-sep">›</span><span class="dp-crumb ${active}" onclick="dpNavigate('${escapeHtml(acc)}')">${escapeHtml(parts[i])}</span>`;
+          }
+        } else {
+          html += `<span class="dp-crumb" onclick="dpNavigate('/')">/</span>`;
+          acc = '/';
+          for (let i = 0; i < parts.length; i++) {
+            acc = acc === '/' ? '/' + parts[i] : acc + '/' + parts[i];
+            const active = i === parts.length - 1 ? 'active' : '';
+            html += `<span class="dp-sep">›</span><span class="dp-crumb ${active}" onclick="dpNavigate('${escapeHtml(acc)}')">${escapeHtml(parts[i])}</span>`;
+          }
+        }
+        crumb.innerHTML = html;
       }
 
-      const filtered = filter
-        ? cachedEntries.filter(e => e.toLowerCase().startsWith(filter))
-        : cachedEntries;
-
-      const browser = document.getElementById('dir-browser');
-      if (!filtered.length) {
-        browser.innerHTML = '<div class="dir-entry dir-up" onclick="goUpDir()"><span class="dir-icon">..</span> up</div>'
-          + (filter ? '<div class="dir-entry" style="color:#333;cursor:default">no matches</div>' : '<div class="dir-entry" style="color:#333;cursor:default">no subdirectories</div>');
+      if (DP.errorMsg) {
+        list.innerHTML = `<div class="dp-error">⚠ ${escapeHtml(DP.errorMsg)}</div>`;
         return;
       }
-      browser.innerHTML = '<div class="dir-entry dir-up" onclick="goUpDir()"><span class="dir-icon">..</span> up</div>'
-        + filtered.map(e => `<div class="dir-entry" onclick="selectDir('${escapeHtml(parentDir + e)}')"><span class="dir-icon">+</span> ${escapeHtml(e)}</div>`).join('');
+      const canUp = !dpIsRoot(DP.current);
+      const items = [];
+      items.push(`<div class="dp-item up ${canUp ? '' : 'disabled'} ${DP.focusedIdx === 0 ? 'focused' : ''}"
+                       onclick="${canUp ? `dpNavigate('${escapeHtml(dpParent(DP.current))}')` : ''}">
+                     <span class="dp-chevron">..</span>up
+                   </div>`);
+      DP.entries.forEach((name, i) => {
+        const target = dpJoin(DP.current, name);
+        const idx = i + 1;
+        items.push(`<div class="dp-item ${DP.focusedIdx === idx ? 'focused' : ''}"
+                         onclick="dpNavigate('${escapeHtml(target)}')">
+                       <span class="dp-chevron">▸</span>${escapeHtml(name)}
+                     </div>`);
+      });
+      if (DP.entries.length === 0) items.push(`<div class="dp-empty">— empty —</div>`);
+      list.innerHTML = items.join('');
     }
 
-    function selectDir(dir) {
-      const input = document.getElementById('new-dir');
-      input.value = dir + '/';
-      input.focus();
-      browseDir(dir);
+    function dpEnterEditMode(e) {
+      if (e && e.target && e.target.classList.contains('dp-crumb')) return;
+      DP.editMode = true;
+      dpRender();
     }
+    function dpEditKeydown(e) {
+      if (e.key === 'Enter') { e.preventDefault(); dpNavigate(e.target.value.trim()); }
+      else if (e.key === 'Escape') { e.preventDefault(); dpExitEditMode(); }
+    }
+    function dpExitEditMode() { DP.editMode = false; dpRender(); }
 
-    function goUpDir() {
-      const input = document.getElementById('new-dir');
-      let dir = input.value.replace(/\/+$/, '');
-      const parent = dir.substring(0, dir.lastIndexOf('/'));
-      if (parent) {
-        input.value = parent + '/';
-        input.focus();
-        browseDir(parent);
+    function dpOnKeydown(e) {
+      if (DP.editMode) return;
+      const modal = document.getElementById('new-modal');
+      if (!modal || !modal.classList.contains('visible')) return;
+      const total = DP.entries.length + 1;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        DP.focusedIdx = Math.min(DP.focusedIdx + 1, total - 1);
+        dpRender();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        DP.focusedIdx = Math.max(DP.focusedIdx - 1, 0);
+        dpRender();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (DP.focusedIdx === 0 && !dpIsRoot(DP.current)) {
+          dpNavigate(dpParent(DP.current));
+        } else if (DP.focusedIdx > 0) {
+          const name = DP.entries[DP.focusedIdx - 1];
+          dpNavigate(dpJoin(DP.current, name));
+        }
+      } else if (e.key === 'Backspace' && !e.target.closest('input')) {
+        e.preventDefault();
+        if (!dpIsRoot(DP.current)) dpNavigate(dpParent(DP.current));
       }
     }
+    document.addEventListener('keydown', dpOnKeydown);
 
     async function createFolder() {
-      const dirInput = document.getElementById('new-dir');
       const nameInput = document.getElementById('new-folder-name');
       const name = nameInput.value.trim();
       if (!name) { showToast('Enter a folder name'); return; }
-      let parent = dirInput.value.replace(/\/+$/, '');
-      const newPath = parent + '/' + name;
+      const newPath = dpJoin(DP.current, name);
       try {
         const r = await fetch('/api/mkdir', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ path: newPath }) });
         const d = await r.json();
         if (d.ok) {
           nameInput.value = '';
-          selectDir(newPath);
+          dpNavigate(newPath);
           showToast('Created ' + name);
         } else {
           showToast('Failed: ' + (d.error || 'unknown'));
         }
       } catch { showToast('Failed to create folder'); }
     }
-
-    let browseTimeout;
-    document.addEventListener('DOMContentLoaded', () => {
-      const dirInput = document.getElementById('new-dir');
-      if (dirInput) {
-        dirInput.addEventListener('input', () => {
-          clearTimeout(browseTimeout);
-          browseTimeout = setTimeout(() => browseDir(dirInput.value), 300);
-        });
-      }
-    });
 
     function closeNewSession() {
       document.getElementById('new-modal').classList.remove('visible');
@@ -1188,6 +1666,11 @@
     /* ── Part D: handleFocus ── */
     function handleFocus(tty, pid, event) {
       if (event) event.stopPropagation();
+      const btn = event && event.target && event.target.closest ? event.target.closest('.btn-focus') : null;
+      if (btn && btn.getAttribute('data-hidden') === '1') {
+        showToast('Session is running headless — use Send to interact');
+        return;
+      }
       openTerminal(tty, pid, event);
     }
 

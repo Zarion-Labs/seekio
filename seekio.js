@@ -159,7 +159,7 @@ const macAdapter = {
           try { cwd = execSync(`lsof -p ${pid} 2>/dev/null | grep cwd | awk '{print $NF}'`, { encoding: 'utf8' }).trim(); } catch {}
           if (!cwd) try { cwd = execSync(`lsof -p ${pid} -Fn 2>/dev/null | grep '^n/' | head -1`, { encoding: 'utf8' }).trim().replace(/^n/, ''); } catch {}
 
-          const { messages, toolCalls, currentTool } = getSessionMessages(cwd, 20);
+          const { messages, toolCalls, currentTool, timeline } = getSessionMessages(cwd, 20);
 
           let status = 'idle';
           const cpuNum = parseFloat(cpu);
@@ -179,7 +179,7 @@ const macAdapter = {
           return {
             pid: pidStr, tty, cpu: `${cpu}%`, mem: `${mem}%`, elapsed, cwd,
             projectName: sessionLabel ? `${sessionLabel} · ${cwd ? path.basename(cwd) : 'unknown'}` : cwd ? path.basename(cwd) : 'unknown',
-            status, messages, toolCalls, currentTool, subAgents,
+            status, messages, toolCalls, currentTool, subAgents, timeline: timeline || [],
           };
         } catch { return null; }
       }).filter(Boolean);
@@ -229,7 +229,8 @@ const macAdapter = {
     if (!/^\d+$/.test(tty.replace(/^ttys?0*/, ''))) throw new Error('invalid tty');
     const ttyNum = tty.replace(/^ttys?0*/, '');
     const script = `tell application "Terminal"\nactivate\nrepeat with w from 1 to count of windows\nset win to window w\nrepeat with t from 1 to count of tabs of win\nset theTab to tab t of win\nif tty of theTab contains "${ttyNum}" then\nset selected tab of win to theTab\nset index of win to 1\nreturn "found"\nend if\nend repeat\nend repeat\nend tell`;
-    execSync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, { encoding: 'utf8' });
+    const out = execSync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, { encoding: 'utf8' });
+    return { found: String(out || '').includes('found') };
   },
 };
 
@@ -277,16 +278,35 @@ public class SeekioCwd {
 '@
 Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
 
+function Find-AncestorWindow {
+  param([int]$wpid, [int]$depth = 0)
+  if ($depth -gt 4) { return [int64]0 }
+  try {
+    $p = Get-Process -Id $wpid -ErrorAction SilentlyContinue
+    if ($p -and [int64]$p.MainWindowHandle -ne 0) { return [int64]$p.MainWindowHandle }
+    $w = Get-WmiObject Win32_Process -Filter "ProcessId=$wpid" -ErrorAction SilentlyContinue
+    if ($w -and $w.ParentProcessId -and [int]$w.ParentProcessId -gt 0 -and [int]$w.ParentProcessId -ne $wpid) {
+      return Find-AncestorWindow -wpid ([int]$w.ParentProcessId) -depth ($depth + 1)
+    }
+  } catch {}
+  return [int64]0
+}
+
 Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
   $p = $_
   $wmi = Get-WmiObject Win32_Process -Filter "ProcessId=$($p.Id)" -ErrorAction SilentlyContinue
   $cwd = if ($wmi -and $wmi.WorkingDirectory) { $wmi.WorkingDirectory.TrimEnd('\\') } else { '' }
   if (-not $cwd) { try { $cwd = [SeekioCwd]::Get([int]$p.Id) } catch {} }
+  # Walk the ancestor chain (claude.exe → pwsh.exe → WindowsTerminal.exe) looking for
+  # a visible window. If nothing is found within 4 levels, treat the session as headless
+  # (dispatched with -WindowStyle Hidden, or had its terminal window killed).
+  $hwnd = Find-AncestorWindow -wpid ([int]$p.Id)
   [PSCustomObject]@{
     id    = [string]$p.Id
     cwd   = if ($cwd) { $cwd } else { '' }
     memMB = [int]($p.WorkingSet64 / 1MB)
     start = if ($p.StartTime) { $p.StartTime.ToString('o') } else { '' }
+    hasWindow = ($hwnd -ne 0)
   }
 } | ConvertTo-Json -Compress`;
       fs.writeFileSync(ps1, psCode.trim());
@@ -322,7 +342,7 @@ Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
           if (bestDir) projDirOverride = bestDir;
         }
 
-        const { messages, toolCalls, currentTool } = projDirOverride
+        const { messages, toolCalls, currentTool, timeline } = projDirOverride
           ? getSessionMessagesByProjDir(projDirOverride, 20)
           : getSessionMessages(cwd, 20);
 
@@ -364,6 +384,8 @@ Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
           toolCalls,
           currentTool,
           subAgents,
+          timeline: timeline || [],
+          hidden: !p.hasWindow,
         };
       });
     } catch { return []; }
@@ -379,7 +401,10 @@ Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
     } else {
       try {
         execSync(`where wt`, { stdio: 'ignore' });
-        execSync(`wt -d "${dirPath}" cmd /k "${tmpBat}"`, { stdio: 'ignore' });
+        // `.bat` already starts with `cd /d "${dirPath}"`, so wt does not
+        // need -d. Dropping -d avoids wt's arg parser mangling paths with
+        // multiple space-separated segments (e.g. "Zarion Labs\seekio").
+        execSync(`wt cmd /k "${tmpBat}"`, { stdio: 'ignore' });
       } catch {
         execSync(`start "seekIO" cmd /k "${tmpBat}"`, { shell: true, stdio: 'ignore' });
       }
@@ -467,7 +492,15 @@ function Find-Window {
     }
     $wmi = Get-WmiObject Win32_Process -Filter "ProcessId=$wpid" -ErrorAction SilentlyContinue
     if ($wmi -and $wmi.ParentProcessId -and [int]$wmi.ParentProcessId -gt 0 -and [int]$wmi.ParentProcessId -ne $wpid) {
-      return Find-Window -wpid ([int]$wmi.ParentProcessId) -depth ($depth + 1)
+      $h = Find-Window -wpid ([int]$wmi.ParentProcessId) -depth ($depth + 1)
+      if ($h -ne 0) { return $h }
+    }
+    $children = Get-WmiObject Win32_Process -Filter "ParentProcessId=$wpid" -ErrorAction SilentlyContinue
+    if ($children) {
+      foreach ($c in @($children)) {
+        $h = Find-Window -wpid ([int]$c.ProcessId) -depth ($depth + 1)
+        if ($h -ne 0) { return $h }
+      }
     }
   } catch {}
   return [int64]0
@@ -475,13 +508,17 @@ function Find-Window {
 $hwnd = Find-Window -wpid ${pid}
 if ($hwnd -ne $null -and $hwnd -gt 0) {
   try {
-    [SeekioFocus]::ShowWindow([IntPtr]$hwnd, 9)
+    [SeekioFocus]::ShowWindow([IntPtr]$hwnd, 5)
     [SeekioFocus]::SetForegroundWindow([IntPtr]$hwnd)
-  } catch {}
+    Write-Output "FOUND"
+  } catch { Write-Output "ERR" }
+} else {
+  Write-Output "NONE"
 }
 `.trim());
     try {
-      execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${ps1}"`, { encoding: 'utf8', timeout: 5000 });
+      const out = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${ps1}"`, { encoding: 'utf8', timeout: 5000 }).trim();
+      return { found: out.includes('FOUND') };
     } finally {
       try { fs.unlinkSync(ps1); } catch {}
     }
@@ -508,18 +545,19 @@ function readFileTail(filePath, readSize) {
 // parses it, and returns { messages, toolCalls, currentTool }.
 function parseSessionDir(projDir, count) {
   try {
-    if (!fs.existsSync(projDir)) return { messages: [], toolCalls: [], currentTool: null };
+    if (!fs.existsSync(projDir)) return { messages: [], toolCalls: [], currentTool: null, timeline: [] };
     const files = fs.readdirSync(projDir)
       .filter(f => f.endsWith('.jsonl') && !f.includes('subagent'))
       .map(f => ({ name: f, mtime: fs.statSync(path.join(projDir, f)).mtimeMs }))
       .sort((a, b) => b.mtime - a.mtime);
-    if (!files.length) return { messages: [], toolCalls: [], currentTool: null };
+    if (!files.length) return { messages: [], toolCalls: [], currentTool: null, timeline: [] };
 
     const filePath = path.join(projDir, files[0].name);
-    const raw = readFileTail(filePath, 65536);
+    const raw = readFileTail(filePath, 256 * 1024);
     const lines = raw.split('\n').filter(Boolean);
 
     const msgs = [];
+    const timeline = [];
     for (const line of lines) {
       try {
         const d = JSON.parse(line);
@@ -535,9 +573,36 @@ function parseSessionDir(projDir, count) {
             if (c.type === 'tool_result') hasToolResult = true;
           }
         }
-        if (text) msgs.push({ role, text: text.slice(0, 2000), hasToolUse, hasToolResult });
+        if (text) msgs.push({ role, text: text.slice(0, 2000), hasToolUse, hasToolResult, timestamp: d.timestamp || null });
         else if (hasToolUse || hasToolResult) {
-          msgs.push({ role, text: hasToolUse ? '(using tools...)' : '(tool result)', hasToolUse, hasToolResult });
+          msgs.push({ role, text: hasToolUse ? '(using tools...)' : '(tool result)', hasToolUse, hasToolResult, timestamp: d.timestamp || null });
+        }
+
+        // Timeline entries (expanded view — one entry per distinct content part).
+        const ts = d.timestamp || null;
+        if (role === 'user' && typeof content === 'string') {
+          timeline.push({ type: 'user', timestamp: ts, text: content.slice(0, 2000) });
+        } else if (role === 'user' && Array.isArray(content)) {
+          for (const c of content) {
+            if (c.type === 'tool_result') {
+              let output = '';
+              if (typeof c.content === 'string') output = c.content;
+              else if (Array.isArray(c.content)) output = c.content.map(x => x.text || '').join('\n');
+              timeline.push({ type: 'tool_result', timestamp: ts, toolId: c.tool_use_id, output: output.slice(0, 4000), isError: !!c.is_error });
+            } else if (c.type === 'text' && c.text) {
+              timeline.push({ type: 'user', timestamp: ts, text: c.text.slice(0, 2000) });
+            }
+          }
+        } else if (role === 'assistant' && Array.isArray(content)) {
+          for (const c of content) {
+            if (c.type === 'text' && c.text) {
+              timeline.push({ type: 'assistant', timestamp: ts, text: c.text.slice(0, 4000) });
+            } else if (c.type === 'tool_use') {
+              timeline.push({ type: 'tool_call', timestamp: ts, toolName: c.name, toolId: c.id, input: c.input, status: 'complete' });
+            } else if (c.type === 'thinking' && c.thinking) {
+              timeline.push({ type: 'thinking', timestamp: ts, text: c.thinking.slice(0, 2000) });
+            }
+          }
         }
       } catch {}
     }
@@ -546,8 +611,6 @@ function parseSessionDir(projDir, count) {
     const running = toolCalls.filter(tc => tc.status === 'running');
     const currentTool = running.length ? running[running.length - 1].name : null;
 
-    // Preserve last 'count' real-text messages so tool-heavy sessions don't wipe history.
-    // Include any trailing tool-only messages so status detection stays accurate.
     const realMsgs = msgs.filter(m => m.text !== '(using tools...)' && m.text !== '(tool result)');
     const recentReal = realMsgs.slice(-count);
     let displayMsgs;
@@ -558,10 +621,11 @@ function parseSessionDir(projDir, count) {
       displayMsgs = oldestIdx >= 0 ? msgs.slice(oldestIdx) : msgs.slice(-count);
     }
 
-    return { messages: displayMsgs, toolCalls, currentTool };
+    // Cap timeline at last 100 entries.
+    return { messages: displayMsgs, toolCalls, currentTool, timeline: timeline.slice(-100) };
   } catch (err) {
     console.error('[parseSessionDir]', projDir, err.message);
-    return { messages: [], toolCalls: [], currentTool: null };
+    return { messages: [], toolCalls: [], currentTool: null, timeline: [] };
   }
 }
 
@@ -680,7 +744,7 @@ function readSubAgents(projDir) {
               if (c.type === 'text' && c.text?.trim()) { text = c.text.trim(); break; }
             }
           }
-          if (text) messages.push({ role, text: text.slice(0, 500) });
+          if (text) messages.push({ role, text: text.slice(0, 500), timestamp: d.timestamp || null });
         }
 
         if (!messages.length) return null;
@@ -926,6 +990,7 @@ function parseToolCalls(lines) {
           input: c.input || {}, keyArg: getKeyArg(c.name, c.input || {}),
           result: null, isError: false, status: 'running',
           durationMs: null, startedAt: ts || 0, endedAt: null,
+          timestamp: d.timestamp || null,
         };
         pending[c.id] = toolCalls.length;
         toolCalls.push(tc);
@@ -972,17 +1037,27 @@ const server = http.createServer((req, res) => {
     if (AUTO_CLOSE && autoCloseTimer) { clearTimeout(autoCloseTimer); autoCloseTimer = null; }
 
   } else if (url.pathname === '/api/ls') {
-    const dir = url.searchParams.get('dir') || os.homedir();
+    const raw = url.searchParams.get('dir') || '';
+    // Resolve relative / empty paths against homedir so the client never has to
+    // care about absolute vs relative.
+    let resolved;
+    if (!raw) {
+      resolved = os.homedir();
+    } else if (raw.startsWith('/') || /^[A-Za-z]:/.test(raw)) {
+      resolved = raw;
+    } else {
+      resolved = path.join(os.homedir(), raw);
+    }
     try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      const entries = fs.readdirSync(resolved, { withFileTypes: true })
         .filter(e => e.isDirectory() && !e.name.startsWith('.'))
         .map(e => e.name)
         .sort();
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, dir, entries }));
+      res.end(JSON.stringify({ ok: true, dir: resolved, resolved, entries }));
     } catch (e) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, dir, entries: [], error: String(e) }));
+      res.end(JSON.stringify({ ok: false, dir: resolved, resolved, entries: [], error: e.code || String(e) }));
     }
     return;
 
@@ -1061,9 +1136,10 @@ const server = http.createServer((req, res) => {
   } else if (url.pathname === '/api/focus') {
     const tty = url.searchParams.get('tty') || '';
     const pid = url.searchParams.get('pid') || '';
-    try { platform.focus(tty, pid); } catch {}
+    let result = { found: false };
+    try { result = platform.focus(tty, pid) || { found: false }; } catch {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
+    res.end(JSON.stringify({ ok: true, ...result }));
 
   } else {
     res.writeHead(200, { 'Content-Type': 'text/html' });
