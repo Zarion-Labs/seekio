@@ -1023,6 +1023,7 @@
             <span class="tool-entry-name">${escapeHtml(tc.name)}</span>
             ${statusEl}
             <span class="tool-entry-dur">${escapeHtml(dur)}</span>
+            ${tsSpan(tc.timestamp)}
             ${arrow}
           </div>
           ${tc.keyArg ? `<div class="tool-entry-arg">${escapeHtml(tc.keyArg)}</div>` : ''}
