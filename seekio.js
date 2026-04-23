@@ -278,19 +278,29 @@ public class SeekioCwd {
 '@
 Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
 
+function Find-AncestorWindow {
+  param([int]$wpid, [int]$depth = 0)
+  if ($depth -gt 4) { return [int64]0 }
+  try {
+    $p = Get-Process -Id $wpid -ErrorAction SilentlyContinue
+    if ($p -and [int64]$p.MainWindowHandle -ne 0) { return [int64]$p.MainWindowHandle }
+    $w = Get-WmiObject Win32_Process -Filter "ProcessId=$wpid" -ErrorAction SilentlyContinue
+    if ($w -and $w.ParentProcessId -and [int]$w.ParentProcessId -gt 0 -and [int]$w.ParentProcessId -ne $wpid) {
+      return Find-AncestorWindow -wpid ([int]$w.ParentProcessId) -depth ($depth + 1)
+    }
+  } catch {}
+  return [int64]0
+}
+
 Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object {
   $p = $_
   $wmi = Get-WmiObject Win32_Process -Filter "ProcessId=$($p.Id)" -ErrorAction SilentlyContinue
   $cwd = if ($wmi -and $wmi.WorkingDirectory) { $wmi.WorkingDirectory.TrimEnd('\\') } else { '' }
   if (-not $cwd) { try { $cwd = [SeekioCwd]::Get([int]$p.Id) } catch {} }
-  # Walk the process tree (up to parent and to children) to detect if there's ANY visible window.
-  # This is how we know whether the session is "headless" — dispatched with -WindowStyle Hidden
-  # or its terminal was killed while claude.exe kept running.
-  $hwnd = [int64]$p.MainWindowHandle
-  if ($hwnd -eq 0 -and $wmi -and $wmi.ParentProcessId) {
-    $par = Get-Process -Id ([int]$wmi.ParentProcessId) -ErrorAction SilentlyContinue
-    if ($par) { $hwnd = [int64]$par.MainWindowHandle }
-  }
+  # Walk the ancestor chain (claude.exe → pwsh.exe → WindowsTerminal.exe) looking for
+  # a visible window. If nothing is found within 4 levels, treat the session as headless
+  # (dispatched with -WindowStyle Hidden, or had its terminal window killed).
+  $hwnd = Find-AncestorWindow -wpid ([int]$p.Id)
   [PSCustomObject]@{
     id    = [string]$p.Id
     cwd   = if ($cwd) { $cwd } else { '' }
